@@ -99,7 +99,15 @@
           <i class="bi bi-info-circle"></i> <strong>Instrucciones:</strong> Apunta la cámara del dispositivo al QR del estudiante para registrar su asistencia.
         </div>
         
-        <div id="scanner-container" data-clase-id="{{ clase.id }}" style="width:100%;max-width:100%;margin:0 auto;min-height:300px;"></div>
+        <div id="scanner-container" data-clase-id="{{ clase.id }}" style="width:100%;max-width:100%;margin:0 auto;min-height:400px;background-color:#000;border-radius:8px;overflow:hidden;position:relative;display:block;">
+          <div id="scanner-loading" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;text-align:center;z-index:10;">
+            <div class="spinner-border text-light" role="status">
+              <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="mt-2">Iniciando cámara...</p>
+            <p id="loading-status" class="mt-2 small"></p>
+          </div>
+        </div>
         <script type="application/json" id="clase-data">{{ {'id': clase.id}|tojson }}</script>
         <div id="scanner-resultado" class="mt-3"></div>
         <div id="scanner-estado" class="mt-2 text-center text-muted"></div>
@@ -111,236 +119,525 @@
   </div>
 </div>
 
-<script src="https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
 <script>
-  const claseData = JSON.parse(document.getElementById('clase-data').textContent);
-  const claseId = claseData.id;
-  let html5QrCode = null;
-  let escaneando = false;
-  const scannerContainer = document.getElementById('scanner-container');
-  const resultDiv = document.getElementById('scanner-resultado');
-  const estadoDiv = document.getElementById('scanner-estado');
-  const scannerModal = document.getElementById('scannerModal');
-
-  function mostrarEstado(mensaje, tipo = 'info') {
-    estadoDiv.innerHTML = `<small class="text-${tipo}"><i class="bi bi-${tipo === 'success' ? 'check-circle' : tipo === 'danger' ? 'x-circle' : 'info-circle'}"></i> ${mensaje}</small>`;
-  }
-
-  function registrarEnServidor(payload) {
-    if (escaneando) return;
-    escaneando = true;
+  // Cargar la librería html5-qrcode primero con múltiples CDNs como fallback
+  (function() {
+    // Verificar si ya está cargado
+    if (typeof Html5Qrcode !== 'undefined') {
+      console.log('Html5Qrcode ya está disponible');
+      inicializarScanner();
+      return;
+    }
     
-    mostrarEstado('Registrando asistencia...', 'info');
+    const cdnUrls = [
+      'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/minified/html5-qrcode.min.js',
+      'https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js'
+    ];
     
-    fetch('{{ url_for("registrar_asistencia") }}', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    })
-    .then(r => r.json().then(j => ({status: r.status, body: j})))
-    .then(obj => {
-      escaneando = false;
-      if (obj.status === 200 && obj.body.ok) {
+    let currentIndex = 0;
+    let scriptElement = null;
+    
+    function intentarCargar(index) {
+      if (index >= cdnUrls.length) {
+        console.error('Todos los CDNs fallaron');
+        const resultDiv = document.getElementById('scanner-resultado');
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="alert alert-danger">
+              <strong>Error al cargar la librería de escaneo</strong><br>
+              No se pudo cargar html5-qrcode desde ningún CDN disponible.<br>
+              <small>Verifique su conexión a internet o contacte al administrador.</small><br><br>
+              <button class="btn btn-sm btn-primary" onclick="location.reload()">Recargar página</button>
+            </div>
+          `;
+        }
+        return;
+      }
+      
+      // Remover script anterior si existe
+      if (scriptElement && scriptElement.parentNode) {
+        scriptElement.parentNode.removeChild(scriptElement);
+      }
+      
+      scriptElement = document.createElement('script');
+      scriptElement.src = cdnUrls[index];
+      scriptElement.async = true;
+      scriptElement.crossOrigin = 'anonymous';
+      
+      scriptElement.onload = function() {
+        console.log('html5-qrcode cargado correctamente desde:', cdnUrls[index]);
+        // Esperar un momento para asegurar que la librería esté completamente inicializada
+        setTimeout(function() {
+          if (typeof Html5Qrcode !== 'undefined') {
+            inicializarScanner();
+          } else {
+            console.warn('Html5Qrcode aún no está disponible después de cargar, intentando siguiente CDN...');
+            currentIndex++;
+            intentarCargar(currentIndex);
+          }
+        }, 100);
+      };
+      
+      scriptElement.onerror = function() {
+        console.warn('Error al cargar desde:', cdnUrls[index], 'Intentando siguiente CDN...');
+        currentIndex++;
+        intentarCargar(currentIndex);
+      };
+      
+      document.head.appendChild(scriptElement);
+    }
+    
+    // Esperar a que el DOM esté listo
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() {
+        intentarCargar(0);
+      });
+    } else {
+      intentarCargar(0);
+    }
+  })();
+
+  function inicializarScanner() {
+    // Verificar que Html5Qrcode esté disponible
+    if (typeof Html5Qrcode === 'undefined') {
+      console.error('Html5Qrcode no está disponible');
+      const resultDiv = document.getElementById('scanner-resultado');
+      if (resultDiv) {
         resultDiv.innerHTML = `
-          <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <strong><i class="bi bi-check-circle"></i> ${obj.body.msg}</strong><br>
-            <strong>Estudiante:</strong> ${obj.body.estudiante}<br>
-            <strong>Hora:</strong> ${obj.body.hora || ''}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          <div class="alert alert-danger">
+            <strong>Error: Librería no disponible</strong><br>
+            Html5Qrcode no se cargó correctamente. Recargue la página.
           </div>
         `;
-        mostrarEstado('Escaneo completado. Puede escanear otro QR.', 'success');
-        if (html5QrCode) {
-          setTimeout(() => {
-            html5QrCode.resume();
-            mostrarEstado('Listo para escanear...', 'info');
-          }, 2000);
+      }
+      return;
+    }
+
+    console.log('Html5Qrcode disponible, inicializando scanner...');
+
+    const claseDataEl = document.getElementById('clase-data');
+    if (!claseDataEl) {
+      console.error('No se encontró el elemento clase-data');
+      return;
+    }
+
+    const claseData = JSON.parse(claseDataEl.textContent);
+    const claseId = claseData.id;
+    let html5QrCode = null;
+    let escaneando = false;
+    const scannerContainer = document.getElementById('scanner-container');
+    const resultDiv = document.getElementById('scanner-resultado');
+    const estadoDiv = document.getElementById('scanner-estado');
+    const scannerModal = document.getElementById('scannerModal');
+
+    if (!scannerModal) {
+      console.error('No se encontró el modal del scanner');
+      return;
+    }
+
+    function mostrarEstado(mensaje, tipo = 'info') {
+      estadoDiv.innerHTML = `<small class="text-${tipo}"><i class="bi bi-${tipo === 'success' ? 'check-circle' : tipo === 'danger' ? 'x-circle' : 'info-circle'}"></i> ${mensaje}</small>`;
+    }
+
+    function registrarEnServidor(payload) {
+      if (escaneando) return;
+      escaneando = true;
+      
+      mostrarEstado('Registrando asistencia...', 'info');
+      
+      fetch('{{ url_for("registrar_asistencia") }}', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      })
+      .then(r => r.json().then(j => ({status: r.status, body: j})))
+      .then(obj => {
+        escaneando = false;
+        if (obj.status === 200 && obj.body.ok) {
+          resultDiv.innerHTML = `
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+              <strong><i class="bi bi-check-circle"></i> ${obj.body.msg}</strong><br>
+              <strong>Estudiante:</strong> ${obj.body.estudiante}<br>
+              <strong>Hora:</strong> ${obj.body.hora || ''}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+          `;
+          mostrarEstado('Escaneo completado. Puede escanear otro QR.', 'success');
+          if (html5QrCode) {
+            setTimeout(() => {
+              html5QrCode.resume();
+              mostrarEstado('Listo para escanear...', 'info');
+            }, 2000);
+          }
+        } else if (obj.status === 409) {
+          resultDiv.innerHTML = `
+            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+              <strong><i class="bi bi-exclamation-triangle"></i> ${obj.body.msg}</strong><br>
+              <strong>Estudiante:</strong> ${obj.body.estudiante || 'N/A'}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+          `;
+          mostrarEstado('Ya registrado. Puede escanear otro QR.', 'warning');
+          if (html5QrCode) {
+            setTimeout(() => {
+              html5QrCode.resume();
+              mostrarEstado('Listo para escanear...', 'info');
+            }, 2000);
+          }
+        } else {
+          resultDiv.innerHTML = `
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+              <strong><i class="bi bi-x-circle"></i> ${obj.body.msg || 'Error al registrar asistencia'}</strong>
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+          `;
+          mostrarEstado('Error. Puede intentar de nuevo.', 'danger');
+          if (html5QrCode) {
+            setTimeout(() => {
+              html5QrCode.resume();
+              mostrarEstado('Listo para escanear...', 'info');
+            }, 2000);
+          }
         }
-      } else if (obj.status === 409) {
-        resultDiv.innerHTML = `
-          <div class="alert alert-warning alert-dismissible fade show" role="alert">
-            <strong><i class="bi bi-exclamation-triangle"></i> ${obj.body.msg}</strong><br>
-            <strong>Estudiante:</strong> ${obj.body.estudiante || 'N/A'}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>
-        `;
-        mostrarEstado('Ya registrado. Puede escanear otro QR.', 'warning');
-        if (html5QrCode) {
-          setTimeout(() => {
-            html5QrCode.resume();
-            mostrarEstado('Listo para escanear...', 'info');
-          }, 2000);
-        }
-      } else {
+      })
+      .catch(err => {
+        escaneando = false;
+        console.error(err);
         resultDiv.innerHTML = `
           <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <strong><i class="bi bi-x-circle"></i> ${obj.body.msg || 'Error al registrar asistencia'}</strong>
+            <strong><i class="bi bi-wifi-off"></i> Error de conexión</strong><br>
+            No se pudo conectar con el servidor. Verifique su conexión a internet.
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
           </div>
         `;
-        mostrarEstado('Error. Puede intentar de nuevo.', 'danger');
+        mostrarEstado('Error de conexión. Verifique su internet.', 'danger');
         if (html5QrCode) {
           setTimeout(() => {
             html5QrCode.resume();
             mostrarEstado('Listo para escanear...', 'info');
           }, 2000);
         }
+      });
+    }
+
+    function parsePayload(text) {
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && parsed.numero_control) {
+          return parsed;
+        }
+      } catch(e) {
+        console.log('No es JSON válido, intentando como texto plano');
       }
-    })
-    .catch(err => {
-      escaneando = false;
-      console.error(err);
-      resultDiv.innerHTML = `
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-          <strong><i class="bi bi-wifi-off"></i> Error de conexión</strong><br>
-          No se pudo conectar con el servidor. Verifique su conexión a internet.
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-      `;
-      mostrarEstado('Error de conexión. Verifique su internet.', 'danger');
+      return null;
+    }
+
+    function actualizarLoadingStatus(mensaje) {
+      const statusEl = document.getElementById('loading-status');
+      if (statusEl) {
+        statusEl.textContent = mensaje;
+      }
+      console.log('Loading status:', mensaje);
+    }
+
+    function iniciarScanner() {
+      // Limpiar cualquier scanner anterior
       if (html5QrCode) {
-        setTimeout(() => {
-          html5QrCode.resume();
-          mostrarEstado('Listo para escanear...', 'info');
-        }, 2000);
+        console.log('Deteniendo scanner anterior...');
+        html5QrCode.stop().then(() => {
+          html5QrCode.clear();
+          html5QrCode = null;
+        }).catch(() => {
+          html5QrCode = null;
+        });
       }
-    });
-  }
 
-  function parsePayload(text) {
-    try {
-      const parsed = JSON.parse(text);
-      if (parsed && parsed.numero_control) {
-        return parsed;
-      }
-    } catch(e) {
-      console.log('No es JSON válido, intentando como texto plano');
-    }
-    return null;
-  }
-
-  function iniciarScanner() {
-    if (html5QrCode) {
-      return; // Ya está iniciado
-    }
-
-    html5QrCode = new Html5Qrcode("scanner-container");
-    
-    const qrConfig = { 
-      fps: 10, 
-      qrbox: function(viewfinderWidth, viewfinderHeight) {
-        const minEdgePercentage = 0.7;
-        const minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
-        const qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
-        return {
-          width: qrboxSize,
-          height: qrboxSize
-        };
-      },
-      aspectRatio: 1.0
-    };
-
-    mostrarEstado('Iniciando cámara...', 'info');
-
-    Html5Qrcode.getCameras().then(cameras => {
-      if (!cameras || cameras.length === 0) {
-        resultDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-camera-video-off"></i> No se detectó ninguna cámara en el dispositivo</div>';
-        mostrarEstado('Cámara no disponible', 'danger');
+      const container = document.getElementById('scanner-container');
+      if (!container) {
+        console.error('Contenedor del scanner no encontrado');
         return;
       }
 
-      html5QrCode.start(
-        { facingMode: "environment" },
-        qrConfig,
-        (decodedText, decodedResult) => {
-          html5QrCode.pause();
-          mostrarEstado('QR detectado, procesando...', 'info');
-          
-          let payload = parsePayload(decodedText);
-          
-          if (payload && payload.numero_control) {
-            payload.clase_id = claseId;
-            registrarEnServidor(payload);
-          } else {
-            const numeroControl = decodedText.trim();
-            if (numeroControl.length >= 3 && /^[a-zA-Z0-9_-]+$/.test(numeroControl)) {
-              registrarEnServidor({
-                numero_control: numeroControl,
-                clase_id: claseId
-              });
-            } else {
-              escaneando = false;
-              resultDiv.innerHTML = `
-                <div class="alert alert-warning alert-dismissible fade show" role="alert">
-                  <strong><i class="bi bi-exclamation-triangle"></i> QR no válido</strong><br>
-                  El código QR escaneado no contiene un número de control válido.
-                  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-              `;
-              mostrarEstado('QR inválido. Intente con otro código.', 'warning');
-              setTimeout(() => {
-                html5QrCode.resume();
-                mostrarEstado('Listo para escanear...', 'info');
-              }, 2000);
-            }
-          }
-        },
-        (errorMessage) => {
-          // Errores de decodificación son normales, no mostrar
-        }
-      ).catch(err => {
-        console.error('Error al iniciar cámara:', err);
+      const loadingDiv = document.getElementById('scanner-loading');
+      if (loadingDiv) {
+        loadingDiv.style.display = 'block';
+      }
+      actualizarLoadingStatus('Preparando scanner...');
+      
+      // Detectar iOS/Safari
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      
+      console.log('Dispositivo iOS:', isIOS);
+      console.log('Protocolo:', window.location.protocol);
+      console.log('Hostname:', window.location.hostname);
+      
+      // Verificar HTTPS (requerido en iOS excepto localhost)
+      const isSecure = window.location.protocol === 'https:' || 
+                       window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1';
+      
+      if (isIOS && !isSecure) {
+        if (loadingDiv) loadingDiv.style.display = 'none';
         resultDiv.innerHTML = `
-          <div class="alert alert-danger">
-            <strong><i class="bi bi-exclamation-triangle"></i> Error al iniciar la cámara</strong><br>
-            ${err.message || err}<br>
-            <small>Asegúrese de dar permisos de cámara al navegador.</small>
+          <div class="alert alert-warning">
+            <strong><i class="bi bi-exclamation-triangle"></i> HTTPS requerido en iOS</strong><br>
+            Safari en iPhone requiere HTTPS para acceder a la cámara (excepto localhost).<br>
+            <small>Acceda a través de HTTPS o use localhost en su computadora.</small>
           </div>
         `;
-        mostrarEstado('Error al acceder a la cámara', 'danger');
-      });
-    }).catch(err => {
-      console.error('Error al obtener cámaras:', err);
-      resultDiv.innerHTML = `
-        <div class="alert alert-danger">
-          <strong><i class="bi bi-exclamation-triangle"></i> Error al acceder a las cámaras</strong><br>
-          ${err.message || err}<br>
-          <small>Verifique los permisos de cámara en su dispositivo.</small>
-        </div>
-      `;
-      mostrarEstado('Error de permisos de cámara', 'danger');
-    });
-  }
+        mostrarEstado('HTTPS requerido en iOS', 'warning');
+        return;
+      }
+      
+      // Esperar a que el modal esté completamente visible y el contenedor tenga dimensiones
+      function verificarDimensiones() {
+        const rect = container.getBoundingClientRect();
+        console.log('Dimensiones del contenedor:', rect.width, 'x', rect.height);
+        
+        if (rect.width === 0 || rect.height === 0) {
+          console.log('Contenedor aún sin dimensiones, reintentando...');
+          return false;
+        }
+        return true;
+      }
 
-  function detenerScanner() {
-    if (html5QrCode) {
-      html5QrCode.stop().then(() => {
-        html5QrCode.clear();
-        html5QrCode = null;
-        resultDiv.innerHTML = '';
-        estadoDiv.innerHTML = '';
-        escaneando = false;
-      }).catch(err => {
-        console.error('Error al detener scanner:', err);
-        html5QrCode = null;
-      });
+      // Intentar hasta 10 veces con delay de 200ms
+      let intentos = 0;
+      const verificarInterval = setInterval(() => {
+        intentos++;
+        if (verificarDimensiones() || intentos >= 10) {
+          clearInterval(verificarInterval);
+          if (intentos >= 10 && !verificarDimensiones()) {
+            console.error('Contenedor no tiene dimensiones válidas después de 2 segundos');
+            actualizarLoadingStatus('Error: Contenedor sin dimensiones');
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            resultDiv.innerHTML = `
+              <div class="alert alert-danger">
+                <strong>Error al inicializar scanner</strong><br>
+                El contenedor no tiene dimensiones válidas. Intente cerrar y abrir el modal nuevamente.
+              </div>
+            `;
+            return;
+          }
+          iniciarCamara();
+        }
+      }, 200);
+
+      function iniciarCamara() {
+        try {
+          html5QrCode = new Html5Qrcode("scanner-container");
+        } catch (err) {
+          console.error('Error al crear Html5Qrcode:', err);
+          if (loadingDiv) loadingDiv.style.display = 'none';
+          resultDiv.innerHTML = `
+            <div class="alert alert-danger">
+              <strong>Error al inicializar scanner</strong><br>
+              ${err.message || 'Error desconocido'}
+            </div>
+          `;
+          return;
+        }
+        
+        // Configuración simplificada
+        const qrConfig = { 
+          fps: isIOS ? 5 : 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0
+        };
+
+        mostrarEstado('Solicitando acceso a la cámara...', 'info');
+        actualizarLoadingStatus('Obteniendo acceso a la cámara...');
+
+        // Intentar obtener cámaras primero
+        Html5Qrcode.getCameras().then(cameras => {
+          console.log('Cámaras encontradas:', cameras.length);
+          actualizarLoadingStatus(`Cámaras encontradas: ${cameras.length}`);
+          
+          if (!cameras || cameras.length === 0) {
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            resultDiv.innerHTML = `
+              <div class="alert alert-danger">
+                <i class="bi bi-camera-video-off"></i> <strong>No se detectó ninguna cámara</strong><br>
+                <small>Verifique que su dispositivo tenga una cámara disponible y que el navegador tenga permisos para acceder a ella.</small>
+              </div>
+            `;
+            mostrarEstado('Cámara no disponible', 'danger');
+            return;
+          }
+
+          // Seleccionar cámara trasera si está disponible
+          let cameraId = null;
+          for (let cam of cameras) {
+            const label = (cam.label || '').toLowerCase();
+            if (label.includes('back') || label.includes('rear') || label.includes('environment')) {
+              cameraId = cam.id;
+              break;
+            }
+          }
+          if (!cameraId) {
+            cameraId = cameras[0].id;
+          }
+
+          actualizarLoadingStatus('Iniciando cámara...');
+          mostrarEstado('Iniciando cámara...', 'info');
+          console.log('Usando cámara:', cameraId);
+
+          html5QrCode.start(
+            cameraId,
+            qrConfig,
+            (decodedText, decodedResult) => {
+              console.log('QR detectado:', decodedText);
+              if (html5QrCode) {
+                html5QrCode.pause();
+              }
+              mostrarEstado('QR detectado, procesando...', 'info');
+              
+              let payload = parsePayload(decodedText);
+              
+              if (payload && payload.numero_control) {
+                payload.clase_id = claseId;
+                registrarEnServidor(payload);
+              } else {
+                const numeroControl = decodedText.trim();
+                if (numeroControl.length >= 3 && /^[a-zA-Z0-9_-]+$/.test(numeroControl)) {
+                  registrarEnServidor({
+                    numero_control: numeroControl,
+                    clase_id: claseId
+                  });
+                } else {
+                  escaneando = false;
+                  resultDiv.innerHTML = `
+                    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                      <strong><i class="bi bi-exclamation-triangle"></i> QR no válido</strong><br>
+                      El código QR escaneado no contiene un número de control válido.
+                      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                  `;
+                  mostrarEstado('QR inválido. Intente con otro código.', 'warning');
+                  if (html5QrCode) {
+                    setTimeout(() => {
+                      html5QrCode.resume();
+                      mostrarEstado('Listo para escanear...', 'info');
+                    }, 2000);
+                  }
+                }
+              }
+            },
+            (errorMessage) => {
+              // Errores de decodificación son normales, ignorar
+            }
+          ).then(() => {
+            console.log('Cámara iniciada exitosamente');
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            mostrarEstado('Cámara activa. Apunta al código QR del estudiante.', 'success');
+          }).catch(err => {
+            console.error('Error al iniciar cámara:', err);
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            const errorMsg = err.message || err.toString() || 'Error desconocido';
+            console.error('Detalles del error:', err);
+            
+            let mensajeError = errorMsg;
+            if (errorMsg.includes('Permission denied') || errorMsg.includes('NotAllowedError')) {
+              mensajeError = 'Permisos de cámara denegados. Por favor, permita el acceso a la cámara en la configuración del navegador.';
+            } else if (errorMsg.includes('NotFoundError') || errorMsg.includes('No camera')) {
+              mensajeError = 'No se encontró ninguna cámara disponible.';
+            } else if (errorMsg.includes('NotReadableError')) {
+              mensajeError = 'La cámara está siendo usada por otra aplicación. Cierre otras aplicaciones que puedan estar usando la cámara.';
+            }
+            
+            resultDiv.innerHTML = `
+              <div class="alert alert-danger">
+                <strong><i class="bi bi-exclamation-triangle"></i> Error al iniciar la cámara</strong><br>
+                ${mensajeError}<br><br>
+                <strong>Soluciones:</strong>
+                <ul class="text-start small">
+                  <li>Verifique que el navegador tenga permisos de cámara</li>
+                  <li>Cierre otras aplicaciones que puedan estar usando la cámara</li>
+                  <li>Recargue la página e intente nuevamente</li>
+                  ${isIOS ? '<li><strong>En iPhone: Asegúrese de estar usando HTTPS</strong></li>' : ''}
+                </ul>
+                <button class="btn btn-sm btn-primary mt-2" onclick="iniciarScanner()">Reintentar</button>
+                <button class="btn btn-sm btn-secondary mt-2" onclick="location.reload()">Recargar página</button>
+              </div>
+            `;
+            mostrarEstado('Error: ' + mensajeError, 'danger');
+            html5QrCode = null;
+          });
+        }).catch(err => {
+          console.error('Error al obtener cámaras:', err);
+          if (loadingDiv) loadingDiv.style.display = 'none';
+          const errorMsg = err.message || err.toString() || 'Error desconocido';
+          
+          let mensajeError = errorMsg;
+          if (errorMsg.includes('Permission denied') || errorMsg.includes('NotAllowedError')) {
+            mensajeError = 'Permisos de cámara denegados. Por favor, permita el acceso a la cámara.';
+          }
+          
+          resultDiv.innerHTML = `
+            <div class="alert alert-danger">
+              <strong><i class="bi bi-exclamation-triangle"></i> Error al acceder a las cámaras</strong><br>
+              ${mensajeError}<br><br>
+              <strong>Soluciones:</strong>
+              <ul class="text-start small">
+                <li>Verifique los permisos de cámara en su dispositivo</li>
+                <li>Asegúrese de permitir el acceso cuando el navegador lo solicite</li>
+                <li>Cierre otras aplicaciones que puedan estar usando la cámara</li>
+                ${isIOS ? '<li><strong>En iPhone: Use HTTPS o acceda desde localhost</strong></li>' : '<li>Verifique que esté usando HTTPS o localhost</li>'}
+              </ul>
+              <button class="btn btn-sm btn-primary mt-2" onclick="iniciarScanner()">Reintentar</button>
+              <button class="btn btn-sm btn-secondary mt-2" onclick="location.reload()">Recargar página</button>
+            </div>
+          `;
+          mostrarEstado('Error de permisos: ' + mensajeError, 'danger');
+        });
     }
   }
 
-  // Iniciar scanner cuando se abre el modal
-  scannerModal.addEventListener('shown.bs.modal', function () {
-    iniciarScanner();
-  });
+    function detenerScanner() {
+      if (html5QrCode) {
+        console.log('Deteniendo scanner...');
+        html5QrCode.stop().then(() => {
+          html5QrCode.clear();
+          html5QrCode = null;
+          resultDiv.innerHTML = '';
+          estadoDiv.innerHTML = '';
+          escaneando = false;
+          const loadingDiv = document.getElementById('scanner-loading');
+          if (loadingDiv) loadingDiv.style.display = 'block';
+          console.log('Scanner detenido correctamente');
+        }).catch(err => {
+          console.error('Error al detener scanner:', err);
+          html5QrCode = null;
+        });
+      }
+    }
 
-  // Detener scanner cuando se cierra el modal
-  scannerModal.addEventListener('hidden.bs.modal', function () {
-    detenerScanner();
-  });
+    // Iniciar scanner cuando se abre el modal
+    scannerModal.addEventListener('shown.bs.modal', function () {
+      // Iniciar inmediatamente cuando el modal esté visible
+      console.log('Modal completamente visible, iniciando scanner...');
+      iniciarScanner();
+    });
 
-  // También detener al hacer clic en cerrar
-  document.getElementById('cerrarScanner').addEventListener('click', function() {
-    detenerScanner();
-  });
+    // Detener scanner cuando se cierra el modal
+    scannerModal.addEventListener('hidden.bs.modal', function () {
+      detenerScanner();
+    });
+
+    // También detener al hacer clic en cerrar
+    const cerrarBtn = document.getElementById('cerrarScanner');
+    if (cerrarBtn) {
+      cerrarBtn.addEventListener('click', function() {
+        detenerScanner();
+      });
+    }
+
+    // Hacer las funciones accesibles globalmente para los botones de reintentar
+    window.iniciarScanner = iniciarScanner;
+  }
 </script>
 {% endblock %}
+
 

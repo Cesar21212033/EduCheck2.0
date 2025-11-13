@@ -1570,5 +1570,60 @@ def init_db():
     print("Tablas creadas")
 
 if __name__ == '__main__':
-    # Ejecutar en 0.0.0.0 para que sea accesible desde la red local
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=True)
+    # Verificar si existen certificados SSL para HTTPS
+    cert_dir = os.path.join(os.path.dirname(__file__), 'certificados')
+    cert_file = os.path.join(cert_dir, 'cert.pem')
+    key_file = os.path.join(cert_dir, 'key.pem')
+    
+    use_https = os.path.exists(cert_file) and os.path.exists(key_file)
+    
+    if use_https:
+        # Obtener IP local para mostrar en el mensaje
+        import socket
+        hostname = socket.gethostname()
+        try:
+            local_ip = socket.gethostbyname(hostname)
+        except:
+            local_ip = "192.168.100.34"
+        
+        print("=" * 60)
+        print("Iniciando servidor Flask con HTTPS")
+        print("=" * 60)
+        print(f"\nURLs de acceso:")
+        print(f"  Desde tu computadora: https://localhost:5000")
+        print(f"  Desde iPhone/otros dispositivos: https://{local_ip}:5000")
+        print("=" * 60)
+        print("\n[!] IMPORTANTE para iPhone:")
+        print("   1. Asegurate de que iPhone y computadora esten en la misma red WiFi")
+        print("   2. Usa Safari (no Chrome) en iPhone")
+        print("   3. Escribe: https://" + local_ip + ":5000")
+        print("   4. Safari mostrara advertencia - toca 'Avanzado' > 'Continuar'")
+        print("=" * 60)
+        print("\nServidor iniciando...")
+        print("Presiona CTRL+C para detener")
+        print("=" * 60)
+        
+        try:
+            app.run(
+                host='0.0.0.0', 
+                port=int(os.getenv('PORT', 5000)), 
+                debug=True,
+                ssl_context=(cert_file, key_file)
+            )
+        except OSError as e:
+            if "Address already in use" in str(e) or "address is already in use" in str(e).lower():
+                print("\n[!] ERROR: El puerto 5000 ya esta en uso.")
+                print("   Cierra la otra aplicacion que esta usando el puerto 5000")
+                print("   O cambia el puerto en la variable de entorno PORT")
+            else:
+                print(f"\n[!] ERROR al iniciar el servidor: {e}")
+                raise
+    else:
+        print("=" * 60)
+        print("⚠️  Iniciando servidor Flask sin HTTPS")
+        print("=" * 60)
+        print("📱 Para usar en iPhone, necesitas HTTPS.")
+        print("   Ejecuta: python generar_certificados.py")
+        print("   Luego reinicia el servidor.")
+        print("=" * 60)
+        app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=True)
