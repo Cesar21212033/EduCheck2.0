@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="card">
+        <div class="card-header">
+          <h4 class="mb-0">Mi Código QR de Asistencia</h4>
+        </div>
+        <div class="card-body text-center">
+          <p class="mb-3"><strong>Estudiante:</strong> {{ estudiante.nombre }}</p>
+          <p class="mb-3"><strong>Número de Control:</strong> {{ estudiante.numero_control }}</p>
+          
+          {% if estudiante.qr_code %}
+            <div class="mb-4">
+              <img src="{{ url_for('mostrar_qr', estudiante_id=estudiante.id) }}" 
+                   alt="QR Code" 
+                   class="img-fluid border p-3 bg-white"
+                   style="max-width: 400px;">
+            </div>
+            <div class="mb-3">
+              <a href="{{ url_for('mostrar_qr', estudiante_id=estudiante.id) }}" 
+                 class="btn btn-primary" 
+                 download="qr_{{ estudiante.numero_control }}.png">
+                Descargar QR
+              </a>
+            </div>
+            <div class="alert alert-info">
+              <strong>Instrucciones:</strong><br>
+              Este es tu código QR personal de asistencia. Puedes mostrarlo desde tu dispositivo móvil o imprimirlo.
+              Cuando el profesor escanee este código, se registrará tu asistencia automáticamente.
+            </div>
+          {% else %}
+            <div class="alert alert-warning">
+              No se encontró código QR para este estudiante. Por favor contacta al administrador.
+            </div>
+          {% endif %}
+          
+          <div class="mt-4">
+            <a href="{{ url_for('alumno_dashboard') }}" class="btn btn-secondary">
+              Volver al Panel
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block content %}
+  <h3>Registrar estudiante</h3>
+  <form method="post" id="formEstudiante" novalidate>
+    <div class="mb-3">
+      <label for="numero_control" class="form-label">Número de control <span class="text-danger">*</span></label>
+      <input 
+        type="text" 
+        class="form-control" 
+        id="numero_control" 
+        name="numero_control" 
+        required 
+        minlength="3" 
+        maxlength="50"
+        pattern="[a-zA-Z0-9_-]{3,50}"
+        placeholder="Ej: 12345678 o ABC-123"
+      />
+      <div class="invalid-feedback">
+        El número de control debe tener entre 3 y 50 caracteres alfanuméricos (puede incluir guiones y guiones bajos)
+      </div>
+      <small class="form-text text-muted">Solo letras, números, guiones (-) y guiones bajos (_)</small>
+    </div>
+    <div class="mb-3">
+      <label for="nombre" class="form-label">Nombre completo <span class="text-danger">*</span></label>
+      <input 
+        type="text" 
+        class="form-control" 
+        id="nombre" 
+        name="nombre" 
+        required 
+        minlength="2" 
+        maxlength="150"
+        pattern="[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]{2,150}"
+        placeholder="Ej: Juan Pérez García"
+      />
+      <div class="invalid-feedback">
+        El nombre debe contener solo letras y espacios, entre 2 y 150 caracteres
+      </div>
+    </div>
+    <div class="mb-3">
+      <label for="correo" class="form-label">Correo electrónico <span class="text-danger">*</span></label>
+      <input 
+        type="text" 
+        class="form-control" 
+        id="correo" 
+        name="correo" 
+        required
+        maxlength="150"
+        placeholder="Ej: estudiante@ejemplo.com o estudiante@tectijuana.edu.mx"
+      />
+      <div class="invalid-feedback">
+        Por favor ingrese un correo electrónico válido
+      </div>
+      <small class="form-text text-muted">El QR será enviado a este correo electrónico. Se aceptan correos @tectijuana.edu.mx y otros dominios válidos.</small>
+    </div>
+    <button type="submit" class="btn btn-primary">Guardar y generar QR</button>
+    <a href="{{ url_for('ver_estudiantes') }}" class="btn btn-secondary">Cancelar</a>
+  </form>
+
+  <script>
+    (function() {
+      'use strict';
+      const form = document.getElementById('formEstudiante');
+      
+      // Validación de email personalizada - más permisiva
+      const emailInput = document.getElementById('correo');
+      
+      function validarEmail(value) {
+        if (!value || value.trim() === '') {
+          return false;
+        }
+        value = value.trim();
+        
+        // Validación muy simple y permisiva
+        // Mínimo: a@b.c (5 caracteres)
+        if (value.length < 5) {
+          return false;
+        }
+        
+        // No espacios
+        if (value.indexOf(' ') !== -1) {
+          return false;
+        }
+        
+        // Exactamente un @
+        const arrobas = value.split('@').length - 1;
+        if (arrobas !== 1) {
+          return false;
+        }
+        
+        // Separar usuario y dominio
+        const partes = value.split('@');
+        if (partes.length !== 2) {
+          return false;
+        }
+        
+        const usuario = partes[0];
+        const dominio = partes[1];
+        
+        // Usuario no vacío
+        if (!usuario || usuario.length === 0) {
+          return false;
+        }
+        
+        // Dominio debe tener al menos un punto
+        if (!dominio || dominio.indexOf('.') === -1) {
+          return false;
+        }
+        
+        // Verificar que tenga TLD (última parte después del punto)
+        const partesDominio = dominio.split('.');
+        if (partesDominio.length < 2) {
+          return false;
+        }
+        
+        const tld = partesDominio[partesDominio.length - 1];
+        if (tld.length < 2) {
+          return false;
+        }
+        
+        // Si pasa todas las verificaciones básicas, es válido
+        return true;
+      }
+      
+      // Solo validar en submit, no en tiempo real para evitar problemas
+      emailInput.addEventListener('input', function() {
+        // Limpiar validación personalizada mientras escribe
+        this.setCustomValidity('');
+      });
+
+      // Validación de número de control
+      const numeroControlInput = document.getElementById('numero_control');
+      numeroControlInput.addEventListener('input', function() {
+        const value = this.value.trim();
+        if (value && !/^[a-zA-Z0-9_-]{3,50}$/.test(value)) {
+          this.setCustomValidity('Solo se permiten letras, números, guiones (-) y guiones bajos (_), entre 3 y 50 caracteres');
+        } else {
+          this.setCustomValidity('');
+        }
+      });
+
+      // Validación de nombre
+      const nombreInput = document.getElementById('nombre');
+      nombreInput.addEventListener('input', function() {
+        const value = this.value.trim();
+        if (value && !/^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]{2,150}$/.test(value)) {
+          this.setCustomValidity('El nombre solo puede contener letras y espacios');
+        } else {
+          this.setCustomValidity('');
+        }
+      });
+
+      form.addEventListener('submit', function(event) {
+        // Validar email antes de enviar
+        const correoValue = emailInput.value.trim();
+        
+        console.log('Validando correo:', correoValue);
+        
+        if (!correoValue) {
+          emailInput.setCustomValidity('El correo electrónico es obligatorio');
+          event.preventDefault();
+          event.stopPropagation();
+          form.classList.add('was-validated');
+          return false;
+        }
+        
+        // Validación muy simple: solo verificar que tenga @ y punto
+        if (correoValue.indexOf('@') === -1 || correoValue.indexOf('.') === -1) {
+          emailInput.setCustomValidity('El correo debe tener formato: usuario@dominio.com');
+          event.preventDefault();
+          event.stopPropagation();
+          form.classList.add('was-validated');
+          return false;
+        }
+        
+        // Si pasa la validación básica, permitir enviar
+        emailInput.setCustomValidity('');
+        
+        // Validar otros campos
+        if (!form.checkValidity()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        form.classList.add('was-validated');
+      }, false);
+    })();
+  </script>
+{% endblock %}

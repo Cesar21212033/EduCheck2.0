@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Asignar Estudiantes{% endblock %}
+{% block content %}
+<h2>Asignar Estudiantes a Materias</h2>
+
+<div class="row mt-4">
+  <div class="col-md-12">
+    <div class="card">
+      <div class="card-header">
+        <h5>Materias y Profesores</h5>
+      </div>
+      <div class="card-body">
+        {% if clases %}
+          <div class="table-responsive">
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Nombre</th>
+                  <th>Profesor</th>
+                  <th>Estudiantes</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for clase in clases %}
+                <tr>
+                  <td>{{ clase.codigo_clase }}</td>
+                  <td>{{ clase.nombre_clase }}</td>
+                  <td>{{ clase.maestro.nombre_completo if clase.maestro else 'Sin asignar' }}</td>
+                  <td>{{ clase.estudiantes.count() }}</td>
+                  <td>
+                    <a href="{{ url_for('detalle_materia', clase_id=clase.id) }}" class="btn btn-sm btn-primary">
+                      Gestionar
+                    </a>
+                    <a href="{{ url_for('reasignar_materia', clase_id=clase.id) }}" class="btn btn-sm btn-outline-warning">
+                      Reasignar
+                    </a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="text-muted">No hay materias registradas.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row mt-4">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5>Profesores Registrados</h5>
+      </div>
+      <div class="card-body">
+        {% if profesores %}
+          <ul class="list-group">
+            {% for profesor in profesores %}
+            <li class="list-group-item">
+              {{ profesor.nombre_completo }} 
+              <span class="badge bg-primary">{{ profesor.clases|length }} materias</span>
+            </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted">No hay profesores registrados.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5>Estudiantes Registrados</h5>
+      </div>
+      <div class="card-body">
+        {% if estudiantes %}
+          <p>Total: <strong>{{ estudiantes|length }}</strong> estudiantes</p>
+          <a href="{{ url_for('ver_estudiantes') }}" class="btn btn-sm btn-primary">
+            Ver Todos
+          </a>
+        {% else %}
+          <p class="text-muted">No hay estudiantes registrados.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mt-3">
+  <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Volver al Dashboard</a>
+</div>
+{% endblock %}
+

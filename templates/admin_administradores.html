@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Gestión de Administradores{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>Gestión de Administradores</h2>
+  <a href="{{ url_for('admin_nuevo_administrador') }}" class="btn btn-primary">
+    <i class="bi bi-plus-circle"></i> Nuevo Administrador
+  </a>
+</div>
+
+{% if administradores %}
+<div class="table-responsive">
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nombre Completo</th>
+        <th>Usuario</th>
+        <th>Correo</th>
+        <th>Estado</th>
+        <th>Materias</th>
+        <th>Registrado</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for admin in administradores %}
+      <tr>
+        <td>{{ admin.id }}</td>
+        <td>{{ admin.nombre_completo }}</td>
+        <td>{{ admin.username }}</td>
+        <td>{{ admin.email }}</td>
+        <td>
+          {% if admin.activo %}
+            <span class="badge bg-success">Activo</span>
+          {% else %}
+            <span class="badge bg-danger">Inactivo</span>
+          {% endif %}
+        </td>
+        <td>{{ admin.clases|length }}</td>
+        <td>{{ admin.creado_en.strftime('%d/%m/%Y') if admin.creado_en else '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+  No hay administradores registrados aún.
+</div>
+{% endif %}
+
+<div class="mt-3">
+  <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Volver al Dashboard</a>
+</div>
+{% endblock %}
+

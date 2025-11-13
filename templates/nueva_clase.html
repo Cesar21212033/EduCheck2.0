@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Crear Materia{% endblock %}
+{% block content %}
+  <h3>Crear Materia</h3>
+  <form method="post" id="formClase" novalidate>
+    <div class="mb-3">
+      <label for="codigo_clase" class="form-label">Código de la clase <span class="text-danger">*</span></label>
+      <input 
+        type="text" 
+        class="form-control" 
+        id="codigo_clase" 
+        name="codigo_clase" 
+        value="{{ codigo }}"
+        required 
+        minlength="2" 
+        maxlength="50"
+        pattern="[a-zA-Z0-9_-]{2,50}"
+        placeholder="Ej: MAT-101 o CS101"
+      />
+      <div class="invalid-feedback">
+        El código debe tener entre 2 y 50 caracteres alfanuméricos (puede incluir guiones y guiones bajos)
+      </div>
+      <small class="form-text text-muted">Solo letras, números, guiones (-) y guiones bajos (_)</small>
+    </div>
+    <div class="mb-3">
+      <label for="nombre_clase" class="form-label">Nombre de la clase <span class="text-danger">*</span></label>
+      <input 
+        type="text" 
+        class="form-control" 
+        id="nombre_clase" 
+        name="nombre_clase" 
+        value="{{ nombre }}"
+        required 
+        minlength="2" 
+        maxlength="150"
+        placeholder="Ej: Matemáticas I"
+      />
+      <div class="invalid-feedback">
+        El nombre debe tener entre 2 y 150 caracteres
+      </div>
+    </div>
+    <div class="mb-3">
+      <label for="profesor_id" class="form-label">Asignar a Profesor <span class="text-danger">*</span></label>
+      <select class="form-select" id="profesor_id" name="profesor_id" required>
+        <option value="">Seleccione un profesor</option>
+        {% for profesor in profesores %}
+        <option value="{{ profesor.id }}" {% if profesor_id == profesor.id|string %}selected{% endif %}>
+          {{ profesor.nombre_completo }} ({{ profesor.username }})
+        </option>
+        {% endfor %}
+      </select>
+      <div class="invalid-feedback">
+        Debe seleccionar un profesor
+      </div>
+      <small class="form-text text-muted">La materia será asignada al profesor seleccionado</small>
+    </div>
+    <button type="submit" class="btn btn-primary">Crear y Asignar Materia</button>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Cancelar</a>
+  </form>
+
+  <script>
+    (function() {
+      'use strict';
+      const form = document.getElementById('formClase');
+      
+      // Validación de código de clase
+      const codigoInput = document.getElementById('codigo_clase');
+      codigoInput.addEventListener('input', function() {
+        const value = this.value.trim();
+        if (value && !/^[a-zA-Z0-9_-]{2,50}$/.test(value)) {
+          this.setCustomValidity('Solo se permiten letras, números, guiones (-) y guiones bajos (_), entre 2 y 50 caracteres');
+        } else {
+          this.setCustomValidity('');
+        }
+      });
+
+      form.addEventListener('submit', function(event) {
+        if (!form.checkValidity()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        form.classList.add('was-validated');
+      }, false);
+    })();
+  </script>
+{% endblock %}

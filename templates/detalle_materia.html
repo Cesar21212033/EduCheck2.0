@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ clase.nombre_clase }} - Asistencia QR{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h3>{{ clase.nombre_clase }}</h3>
+    <p class="text-muted mb-0">Código: {{ clase.codigo_clase }}</p>
+  </div>
+  <div>
+    <a href="{{ url_for('scanner', clase_id=clase.id) }}" class="btn btn-success">
+      Escanear QR
+    </a>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Volver</a>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-6">
+    <div class="card mb-3">
+      <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">Estudiantes Asignados ({{ estudiantes_asignados|length }})</h5>
+      </div>
+      <div class="card-body">
+        {% if estudiantes_asignados %}
+        <div class="list-group">
+          {% for estudiante in estudiantes_asignados %}
+          <div class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+              <strong>{{ estudiante.nombre }}</strong><br>
+              <small class="text-muted">{{ estudiante.numero_control }}</small>
+            </div>
+            <form method="post" action="{{ url_for('remover_estudiante', clase_id=clase.id, estudiante_id=estudiante.id) }}" class="d-inline">
+              <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Remover a {{ estudiante.nombre }} de esta materia?')">
+                Remover
+              </button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted">No hay estudiantes asignados a esta materia.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  
+  <div class="col-md-6">
+    <div class="card mb-3">
+      <div class="card-header bg-success text-white">
+        <h5 class="mb-0">Asignar Estudiante</h5>
+      </div>
+      <div class="card-body">
+        {% if estudiantes_no_asignados %}
+        <form method="post" action="{{ url_for('asignar_estudiante', clase_id=clase.id) }}">
+          <div class="mb-3">
+            <label for="estudiante_id" class="form-label">Seleccionar Estudiante</label>
+            <select class="form-select" id="estudiante_id" name="estudiante_id" required>
+              <option value="">-- Seleccione un estudiante --</option>
+              {% for estudiante in estudiantes_no_asignados %}
+              <option value="{{ estudiante.id }}">{{ estudiante.nombre }} ({{ estudiante.numero_control }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="btn btn-success">Asignar Estudiante</button>
+        </form>
+        {% else %}
+        <p class="text-muted">Todos los estudiantes ya están asignados a esta materia.</p>
+        <a href="{{ url_for('nuevo_estudiante') }}" class="btn btn-outline-primary btn-sm">Registrar Nuevo Estudiante</a>
+        {% endif %}
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="card-header bg-danger text-white">
+        <h5 class="mb-0">Zona de Peligro</h5>
+      </div>
+      <div class="card-body">
+        <p class="text-muted">Eliminar esta materia eliminará todas las asistencias relacionadas.</p>
+        <form method="post" action="{{ url_for('eliminar_materia', clase_id=clase.id) }}" onsubmit="return confirm('¿Está seguro de eliminar esta materia? Esta acción no se puede deshacer.');">
+          <button type="submit" class="btn btn-danger">Eliminar Materia</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

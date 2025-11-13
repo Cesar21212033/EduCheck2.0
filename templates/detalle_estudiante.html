@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>{{ estudiante.nombre }}</h3>
+    <a href="{{ url_for('ver_estudiantes') }}" class="btn btn-secondary btn-sm">Volver</a>
+  </div>
+  
+  <div class="card mb-3">
+    <div class="card-body">
+      <p><strong>Número de control:</strong> {{ estudiante.numero_control }}</p>
+      <p><strong>Correo:</strong> {{ estudiante.correo or '-' }}</p>
+      <p><strong>Registrado:</strong> 
+        {% if estudiante.creado_en %}
+          {{ estudiante.creado_en.strftime('%d/%m/%Y %H:%M') }}
+        {% else %}
+          -
+        {% endif %}
+      </p>
+    </div>
+  </div>
+
+  <h5 class="mb-3">Código QR del Estudiante</h5>
+  {% if estudiante.qr_code %}
+    <div class="text-center mb-3">
+      <img src="{{ url_for('mostrar_qr', estudiante_id=estudiante.id) }}" 
+           alt="QR Code" 
+           class="img-fluid border p-2 bg-white"
+           style="max-width: 300px;">
+      <div class="mt-2">
+        <a href="{{ url_for('mostrar_qr', estudiante_id=estudiante.id) }}" 
+           class="btn btn-sm btn-outline-primary" 
+           download="qr_{{ estudiante.numero_control }}.png">
+          Descargar QR
+        </a>
+        <form method="post" action="{{ url_for('regenerar_qr', estudiante_id=estudiante.id) }}" class="d-inline">
+          <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="return confirm('¿Regenerar el QR de este estudiante?')">
+            Regenerar QR
+          </button>
+        </form>
+      </div>
+      <small class="text-muted d-block mt-2">
+        Este QR contiene el número de control del estudiante y puede ser escaneado en cualquier clase.
+      </small>
+    </div>
+  {% else %}
+    <div class="alert alert-warning">
+      QR no disponible para este estudiante.
+      <form method="post" action="{{ url_for('regenerar_qr', estudiante_id=estudiante.id) }}" class="d-inline">
+        <button type="submit" class="btn btn-sm btn-warning ms-2">
+          Generar QR ahora
+        </button>
+      </form>
+    </div>
+  {% endif %}
+
+  <h5 class="mb-3 mt-4">QR específicos por clase (opcional)</h5>
+  <div class="d-flex flex-wrap gap-2">
+    {% for c in clases %}
+      <a class="btn btn-outline-primary" target="_blank" href="{{ url_for('generar_qr', estudiante_id=estudiante.id, clase_id=c.id) }}">
+        QR - {{ c.nombre_clase }}
+      </a>
+    {% else %}
+      <p class="text-muted">No hay clases registradas</p>
+    {% endfor %}
+  </div>
+{% endblock %}

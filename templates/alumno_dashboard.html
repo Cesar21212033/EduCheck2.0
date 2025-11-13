@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+  <h2 class="mb-4">Mi Panel de Estudiante</h2>
+  
+  <div class="row mb-4">
+    <div class="col-md-12">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Información Personal</h5>
+          <p><strong>Nombre:</strong> {{ estudiante.nombre }}</p>
+          <p><strong>Número de Control:</strong> {{ estudiante.numero_control }}</p>
+          <p><strong>Correo:</strong> {{ estudiante.correo or '-' }}</p>
+          <div class="mt-3">
+            <a href="{{ url_for('alumno_mi_qr') }}" class="btn btn-primary">
+              Ver Mi Código QR
+            </a>
+            <a href="{{ url_for('cambiar_contraseña') }}" class="btn btn-outline-secondary">
+              Cambiar Contraseña
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="row mb-4">
+    <div class="col-md-12">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Mis Materias</h5>
+          {% if clases %}
+            <div class="table-responsive">
+              <table class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Nombre</th>
+                    <th>Profesor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for clase in clases %}
+                  <tr>
+                    <td>{{ clase.codigo_clase }}</td>
+                    <td>{{ clase.nombre_clase }}</td>
+                    <td>{{ clase.maestro.nombre_completo }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted">No estás asignado a ninguna materia aún.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="row">
+    <div class="col-md-12">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Mis Últimas Asistencias</h5>
+          {% if asistencias %}
+            <div class="table-responsive">
+              <table class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Hora</th>
+                    <th>Materia</th>
+                    <th>Método</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for asistencia in asistencias %}
+                  <tr>
+                    <td>{{ asistencia.fecha.strftime('%d/%m/%Y') }}</td>
+                    <td>{{ asistencia.hora.strftime('%H:%M:%S') }}</td>
+                    <td>{{ asistencia.clase.nombre_clase if asistencia.clase else 'N/A' }}</td>
+                    <td>{{ asistencia.metodo }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted">Aún no tienes asistencias registradas.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

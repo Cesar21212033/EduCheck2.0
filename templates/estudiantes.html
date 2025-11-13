@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+  <h3>Estudiantes</h3>
+  <div class="list-group">
+    {% for e in estudiantes %}
+      <div class="list-group-item d-flex justify-content-between align-items-center">
+        <div>
+          <strong>{{ e.nombre }}</strong> <br>
+          <small class="text-muted">Número de Control: {{ e.numero_control }}</small><br>
+          <small class="text-muted">Correo: {{ e.correo or 'No registrado' }}</small>
+        </div>
+        <div>
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('detalle_estudiante', estudiante_id=e.id) }}">
+            Detalles / QR
+          </a>
+          <form method="post" action="{{ url_for('eliminar_estudiante', estudiante_id=e.id) }}" 
+                class="d-inline" 
+                onsubmit="return confirm('¿Estás seguro de eliminar al estudiante {{ e.nombre }} ({{ e.numero_control }})? Esta acción no se puede deshacer.');">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              Eliminar
+            </button>
+          </form>
+        </div>
+      </div>
+    {% else %}
+      <div class="list-group-item">No hay estudiantes.</div>
+    {% endfor %}
+  </div>
+{% endblock %}

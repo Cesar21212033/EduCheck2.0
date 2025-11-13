@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Cambiar Contraseña{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h4 class="mb-0">Cambiar Contraseña</h4>
+      </div>
+      <div class="card-body">
+        <form method="post">
+          <div class="mb-3">
+            <label for="password_actual" class="form-label">Contraseña Actual <span class="text-danger">*</span></label>
+            <input type="password" class="form-control" id="password_actual" name="password_actual" required>
+          </div>
+          
+          <div class="mb-3">
+            <label for="password_nueva" class="form-label">Nueva Contraseña <span class="text-danger">*</span></label>
+            <input type="password" class="form-control" id="password_nueva" name="password_nueva" required minlength="6">
+            <small class="form-text text-muted">Mínimo 6 caracteres</small>
+          </div>
+          
+          <div class="mb-3">
+            <label for="password_confirmar" class="form-label">Confirmar Nueva Contraseña <span class="text-danger">*</span></label>
+            <input type="password" class="form-control" id="password_confirmar" name="password_confirmar" required minlength="6">
+          </div>
+          
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary">Cambiar Contraseña</button>
+            {% if usuario.rol == 'alumno' %}
+              <a href="{{ url_for('alumno_dashboard') }}" class="btn btn-secondary">Cancelar</a>
+            {% else %}
+              <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Cancelar</a>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    {% if usuario.rol == 'alumno' %}
+      <div class="alert alert-info mt-3">
+        <strong>Nota:</strong> Si eres estudiante y es tu primer inicio de sesión, tu contraseña inicial es tu número de control.
+        Te recomendamos cambiarla por una contraseña más segura.
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+

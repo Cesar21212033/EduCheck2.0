@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Nuevo Profesor{% endblock %}
+{% block content %}
+<h3>Registrar Nuevo Profesor</h3>
+<form method="post" novalidate>
+  <div class="mb-3">
+    <label for="username" class="form-label">Nombre de Usuario <span class="text-danger">*</span></label>
+    <input type="text" class="form-control" id="username" name="username" required minlength="3" maxlength="30" pattern="[a-zA-Z0-9_]{3,30}">
+    <small class="form-text text-muted">Entre 3 y 30 caracteres alfanuméricos (puede incluir guiones bajos)</small>
+  </div>
+  
+  <div class="mb-3">
+    <label for="email" class="form-label">Correo Electrónico <span class="text-danger">*</span></label>
+    <input type="text" class="form-control" id="email" name="email" required>
+    <small class="form-text text-muted">Correo electrónico válido</small>
+  </div>
+  
+  <div class="mb-3">
+    <label for="nombre_completo" class="form-label">Nombre Completo <span class="text-danger">*</span></label>
+    <input type="text" class="form-control" id="nombre_completo" name="nombre_completo" required minlength="2" maxlength="150" pattern="[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]{2,150}">
+  </div>
+  
+  <div class="mb-3">
+    <label for="password" class="form-label">Contraseña <span class="text-danger">*</span></label>
+    <input type="password" class="form-control" id="password" name="password" required minlength="6">
+    <small class="form-text text-muted">Mínimo 6 caracteres</small>
+  </div>
+  
+  <div class="mb-3">
+    <label for="password_confirm" class="form-label">Confirmar Contraseña <span class="text-danger">*</span></label>
+    <input type="password" class="form-control" id="password_confirm" name="password_confirm" required minlength="6">
+  </div>
+  
+  <button type="submit" class="btn btn-primary">Registrar Profesor</button>
+  <a href="{{ url_for('admin_profesores') }}" class="btn btn-secondary">Cancelar</a>
+</form>
+{% endblock %}
+

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Reasignar Materia{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h4 class="mb-0">Reasignar Materia</h4>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <strong>Materia:</strong> {{ clase.nombre_clase }}<br>
+          <strong>Código:</strong> {{ clase.codigo_clase }}<br>
+          <strong>Profesor Actual:</strong> {{ clase.maestro.nombre_completo if clase.maestro else 'Sin asignar' }}
+        </div>
+        
+        <form method="post">
+          <div class="mb-3">
+            <label for="profesor_id" class="form-label">Asignar a Profesor <span class="text-danger">*</span></label>
+            <select class="form-select" id="profesor_id" name="profesor_id" required>
+              <option value="">Seleccione un profesor</option>
+              {% for profesor in profesores %}
+              <option value="{{ profesor.id }}" {% if clase.maestro and clase.maestro.id == profesor.id %}selected{% endif %}>
+                {{ profesor.nombre_completo }} ({{ profesor.username }})
+              </option>
+              {% endfor %}
+            </select>
+            <small class="form-text text-muted">Seleccione el profesor al que desea asignar esta materia</small>
+          </div>
+          
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary">Reasignar Materia</button>
+            <a href="{{ url_for('admin_asignar') }}" class="btn btn-secondary">Cancelar</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

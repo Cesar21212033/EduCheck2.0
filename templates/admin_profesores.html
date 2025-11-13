@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Gestión de Profesores{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>Gestión de Profesores</h2>
+  <a href="{{ url_for('admin_nuevo_profesor') }}" class="btn btn-primary">
+    <i class="bi bi-plus-circle"></i> Nuevo Profesor
+  </a>
+</div>
+
+{% if profesores %}
+<div class="table-responsive">
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nombre Completo</th>
+        <th>Usuario</th>
+        <th>Correo</th>
+        <th>Estado</th>
+        <th>Materias</th>
+        <th>Registrado</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for profesor in profesores %}
+      <tr>
+        <td>{{ profesor.id }}</td>
+        <td>{{ profesor.nombre_completo }}</td>
+        <td>{{ profesor.username }}</td>
+        <td>{{ profesor.email }}</td>
+        <td>
+          {% if profesor.activo %}
+            <span class="badge bg-success">Activo</span>
+          {% else %}
+            <span class="badge bg-danger">Inactivo</span>
+          {% endif %}
+        </td>
+        <td>{{ profesor.clases|length }}</td>
+        <td>{{ profesor.creado_en.strftime('%d/%m/%Y') if profesor.creado_en else '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+  No hay profesores registrados aún.
+</div>
+{% endif %}
+
+<div class="mt-3">
+  <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Volver al Dashboard</a>
+</div>
+{% endblock %}
+

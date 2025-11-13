@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Asistencia QR{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>Dashboard{% if usuario.rol == 'admin' %} - Administrador{% endif %}</h2>
+  {% if usuario.rol == 'admin' %}
+  <a href="{{ url_for('nueva_clase') }}" class="btn btn-primary">
+    <i class="bi bi-plus-circle"></i> Nueva Materia
+  </a>
+  {% endif %}
+</div>
+
+<div class="row mb-4">
+  <div class="col-md-4">
+    <div class="card text-white bg-primary">
+      <div class="card-body">
+        <h5 class="card-title">Mis Materias</h5>
+        <h2 class="mb-0">{{ clases|length }}</h2>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-white bg-success">
+      <div class="card-body">
+        <h5 class="card-title">Total Estudiantes</h5>
+        <h2 class="mb-0">{{ total_estudiantes }}</h2>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-white bg-info">
+      <div class="card-body">
+        <h5 class="card-title">Asistencias Hoy</h5>
+        <h2 class="mb-0">{{ total_asistencias_hoy }}</h2>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 class="mb-3">Mis Materias</h3>
+
+{% if clases %}
+<div class="row">
+  {% for clase in clases %}
+  <div class="col-md-6 col-lg-4 mb-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title">{{ clase.nombre_clase }}</h5>
+        <p class="card-text">
+          <small class="text-muted">Código: {{ clase.codigo_clase }}</small><br>
+          <small class="text-muted">Estudiantes: {{ clase.estudiantes.count() }}</small>
+        </p>
+        <div class="d-grid gap-2">
+          <a href="{{ url_for('detalle_materia', clase_id=clase.id) }}" class="btn btn-outline-primary btn-sm">
+            Gestionar Materia
+          </a>
+          <a href="{{ url_for('scanner', clase_id=clase.id) }}" class="btn btn-outline-success btn-sm">
+            Escanear QR
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">
+  <h5>No tienes materias asignadas</h5>
+  {% if usuario.rol == 'admin' %}
+    <p>Comienza creando tu primera materia para gestionar estudiantes y registrar asistencias.</p>
+    <a href="{{ url_for('nueva_clase') }}" class="btn btn-primary">Crear Primera Materia</a>
+  {% else %}
+    <p>Contacta al administrador para que te asigne materias.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+

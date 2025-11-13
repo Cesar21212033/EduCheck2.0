@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Iniciar Sesión - Asistencia QR{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5 col-lg-4">
+    <div class="card shadow">
+      <div class="card-body p-5">
+        <h3 class="card-title text-center mb-4">Iniciar Sesión</h3>
+        
+        <form method="post" id="formLogin" novalidate>
+          <div class="mb-3">
+            <label for="username" class="form-label">Usuario o Número de Control</label>
+            <input 
+              type="text" 
+              class="form-control" 
+              id="username" 
+              name="username" 
+              required 
+              autofocus
+              placeholder="Ingrese su usuario o número de control"
+            />
+            <div class="invalid-feedback">
+              Por favor ingrese su usuario o número de control
+            </div>
+            <small class="form-text text-muted">
+              Si eres estudiante, puedes usar tu número de control como usuario
+            </small>
+          </div>
+          
+          <div class="mb-3">
+            <label for="password" class="form-label">Contraseña</label>
+            <input 
+              type="password" 
+              class="form-control" 
+              id="password" 
+              name="password" 
+              required
+              placeholder="Ingrese su contraseña"
+            />
+            <div class="invalid-feedback">
+              Por favor ingrese su contraseña
+            </div>
+          </div>
+          
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary">Iniciar Sesión</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+  const form = document.getElementById('formLogin');
+  
+  form.addEventListener('submit', function(event) {
+    if (!form.checkValidity()) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    form.classList.add('was-validated');
+  }, false);
+})();
+</script>
+{% endblock %}
+
