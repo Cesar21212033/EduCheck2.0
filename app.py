@@ -37,12 +37,12 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "mysql+pymysql
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Configuración de correo
-app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.office365.com')  # Office 365 para instituciones educativas
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')  # Gmail como servidor por defecto
 app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
 app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True').lower() in ['true', '1', 'yes']
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME', 'l21212033@tectijuana.edu.mx')
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME', 'cesarini.05ramos@gmail.com')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD', '').strip()  # Eliminar espacios en blanco
-app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', 'l21212033@tectijuana.edu.mx')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', 'cesarini.05ramos@gmail.com')
 # Configuración adicional para Flask-Mail
 app.config['MAIL_USE_SSL'] = False
 app.config['MAIL_SUPPRESS_SEND'] = False  # Permitir envío real de correos
@@ -62,6 +62,7 @@ class Usuario(db.Model):
     nombre_completo = db.Column(db.String(150), nullable=False)
     rol = db.Column(db.String(20), nullable=False, default='profesor')  # admin, profesor, alumno
     activo = db.Column(db.Boolean, default=True)
+    password_changed = db.Column(db.Boolean, default=False)  # Para alumnos: indica si ya cambió su contraseña inicial
     creado_en = db.Column(db.DateTime, default=datetime.utcnow)
     # Relación con clases (materias)
     clases = db.relationship('Clase', backref='maestro', lazy=True, cascade='all, delete-orphan')
@@ -365,22 +366,40 @@ def enviar_qr_por_correo(estudiante, qr_base64):
         
         # Enviar el correo
         # Flask-Mail maneja el contexto automáticamente cuando se llama desde una ruta Flask
+        # Asegurar que las credenciales estén actualizadas en la configuración de mail
+        mail.init_app(app)
         mail.send(msg)
         
         return True, "QR enviado exitosamente"
     except Exception as e:
         error_msg = str(e)
+        error_lower = error_msg.lower()
         app.logger.error(f'Error al enviar correo: {error_msg}')
+        app.logger.error(f'Configuración actual - Server: {app.config.get("MAIL_SERVER")}, Port: {app.config.get("MAIL_PORT")}, Username: {app.config.get("MAIL_USERNAME")}')
         
         # Mensajes de error más específicos
-        if 'connect' in error_msg.lower() or 'connection' in error_msg.lower():
-            return False, "Error de conexión con el servidor de correo. Verifique MAIL_SERVER, MAIL_PORT y credenciales."
-        elif 'authentication' in error_msg.lower() or 'login' in error_msg.lower():
-            return False, "Error de autenticación. Verifique MAIL_USERNAME y MAIL_PASSWORD."
-        elif 'password' in error_msg.lower():
-            return False, "Contraseña de correo incorrecta o no configurada. Verifique MAIL_PASSWORD en el archivo .env"
+        if 'connect' in error_lower or 'connection' in error_lower or 'timeout' in error_lower:
+            return False, "Error de conexión con el servidor de correo. Verifique MAIL_SERVER, MAIL_PORT y su conexión a internet."
+        elif 'authentication' in error_lower or 'login' in error_lower or '535' in error_msg or '535-5.7.3' in error_msg:
+            mail_server = app.config.get('MAIL_SERVER', 'smtp.gmail.com')
+            if 'gmail' in mail_server.lower():
+                return False, "Error de autenticación con Gmail. Gmail requiere una 'Contraseña de aplicación' en lugar de tu contraseña normal. Ve a https://myaccount.google.com/apppasswords y genera una contraseña de aplicación. Úsala en MAIL_PASSWORD."
+            else:
+                return False, "Error de autenticación. Necesitas generar una 'Contraseña de aplicación' desde la configuración de seguridad de tu proveedor de correo y usarla en MAIL_PASSWORD."
+        elif 'password' in error_lower or 'credentials' in error_lower:
+            mail_server = app.config.get('MAIL_SERVER', 'smtp.gmail.com')
+            if 'gmail' in mail_server.lower():
+                return False, "Credenciales incorrectas. Para Gmail, necesitas generar una 'Contraseña de aplicación' desde https://myaccount.google.com/apppasswords y usarla en MAIL_PASSWORD."
+            else:
+                return False, "Credenciales incorrectas. Verifica que estés usando una contraseña de aplicación, no tu contraseña normal."
+        elif '535' in error_msg:
+            mail_server = app.config.get('MAIL_SERVER', 'smtp.gmail.com')
+            if 'gmail' in mail_server.lower():
+                return False, "Error 535: Autenticación fallida. Gmail requiere una contraseña de aplicación. Genera una en: https://myaccount.google.com/apppasswords"
+            else:
+                return False, "Error 535: Autenticación fallida. Verifica que estés usando una contraseña de aplicación."
         else:
-            return False, f"Error al enviar correo: {error_msg}"
+            return False, f"Error al enviar correo: {error_msg}. Si usas Gmail, asegúrate de usar una contraseña de aplicación desde https://myaccount.google.com/apppasswords"
 
 # ---------------------
 # RUTAS DE AUTENTICACIÓN
@@ -428,6 +447,10 @@ def login():
                 elif usuario.is_profesor():
                     return redirect(url_for('dashboard'))
                 elif usuario.is_alumno():
+                    # Si es alumno y no ha cambiado su contraseña, redirigir a cambiar contraseña
+                    if not usuario.password_changed:
+                        flash('Por favor, cambia tu contraseña inicial por seguridad', 'warning')
+                        return redirect(url_for('cambiar_contraseña'))
                     return redirect(url_for('alumno_dashboard'))
                 return redirect(url_for('dashboard'))
             else:
@@ -574,8 +597,8 @@ def nuevo_estudiante():
             return redirect(url_for('nuevo_estudiante'))
         
         # Crear usuario tipo alumno automáticamente
-        # Username será basado en el número de control, password temporal será el número de control
-        username_alumno = f"alumno_{num.lower().replace('-', '_')}"
+        # Username será el número de control directamente (en mayúsculas para consistencia)
+        username_alumno = num.upper()
         # Asegurar que el username sea único
         contador = 1
         username_original = username_alumno
@@ -588,9 +611,10 @@ def nuevo_estudiante():
             username=username_alumno,
             email=correo,
             nombre_completo=nombre,
-            rol='alumno'
+            rol='alumno',
+            password_changed=False  # Inicialmente no ha cambiado la contraseña
         )
-        # Password temporal: número de control (el alumno puede cambiarlo después)
+        # Password inicial: número de control (el alumno debe cambiarlo en el primer login)
         usuario_alumno.set_password(num)
         db.session.add(usuario_alumno)
         db.session.flush()  # Para obtener el ID del usuario
@@ -803,7 +827,8 @@ def detalle_estudiante(estudiante_id):
     except Exception as e:
         app.logger.error(f'Error en detalle_estudiante para ID {estudiante_id}: {str(e)}')
         flash('Error al cargar el detalle del estudiante', 'danger')
-        if usuario.is_alumno():
+        usuario = get_current_user()
+        if usuario and usuario.is_alumno():
             return redirect(url_for('alumno_dashboard'))
         return redirect(url_for('ver_estudiantes'))
 
@@ -825,6 +850,11 @@ def alumno_mi_qr():
 @login_required
 def cambiar_contraseña():
     usuario = get_current_user()
+    
+    # Si es alumno y ya cambió su contraseña, no permitir cambiarla de nuevo
+    if usuario.is_alumno() and usuario.password_changed:
+        flash('Ya has cambiado tu contraseña. Solo puedes cambiarla una vez. Si olvidaste tu contraseña, contacta al administrador.', 'warning')
+        return redirect(url_for('alumno_dashboard'))
     
     if request.method == 'POST':
         password_actual = request.form.get('password_actual', '')
@@ -857,6 +887,9 @@ def cambiar_contraseña():
         # Actualizar contraseña
         try:
             usuario.set_password(password_nueva)
+            # Marcar que el alumno ya cambió su contraseña
+            if usuario.is_alumno():
+                usuario.password_changed = True
             db.session.commit()
             flash('Contraseña actualizada exitosamente', 'success')
             

@@ -38,10 +38,16 @@
     </div>
     
     {% if usuario.rol == 'alumno' %}
-      <div class="alert alert-info mt-3">
-        <strong>Nota:</strong> Si eres estudiante y es tu primer inicio de sesión, tu contraseña inicial es tu número de control.
-        Te recomendamos cambiarla por una contraseña más segura.
-      </div>
+      {% if not usuario.password_changed %}
+        <div class="alert alert-warning mt-3">
+          <strong>⚠️ Importante:</strong> Es tu primer inicio de sesión. Tu contraseña inicial es tu número de control.
+          <strong>Debes cambiarla ahora por una contraseña más segura.</strong> Solo podrás cambiarla una vez.
+        </div>
+      {% else %}
+        <div class="alert alert-info mt-3">
+          <strong>Nota:</strong> Ya has cambiado tu contraseña anteriormente. Si olvidaste tu contraseña, contacta al administrador.
+        </div>
+      {% endif %}
     {% endif %}
   </div>
 </div>
