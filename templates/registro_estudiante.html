@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Registro de Estudiante - Asistencia QR{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-5">
+    <div class="card shadow">
+      <div class="card-body p-5">
+        <h3 class="card-title text-center mb-4">Registro de Estudiante</h3>
+        
+        <form method="post" id="formRegistro" novalidate>
+          <div class="mb-3">
+            <label for="numero_control" class="form-label">Número de Control <span class="text-danger">*</span></label>
+            <input 
+              type="text" 
+              class="form-control" 
+              id="numero_control" 
+              name="numero_control" 
+              required 
+              minlength="3" 
+              maxlength="50"
+              pattern="[a-zA-Z0-9_-]{3,50}"
+              placeholder="Ej: 12345678 o ABC-123"
+              value="{{ numero_control if numero_control else '' }}"
+            />
+            <div class="invalid-feedback">
+              El número de control debe tener entre 3 y 50 caracteres alfanuméricos (puede incluir guiones y guiones bajos)
+            </div>
+            <small class="form-text text-muted">Solo letras, números, guiones (-) y guiones bajos (_)</small>
+          </div>
+          
+          <div class="mb-3">
+            <label for="nombre" class="form-label">Nombre Completo <span class="text-danger">*</span></label>
+            <input 
+              type="text" 
+              class="form-control" 
+              id="nombre" 
+              name="nombre" 
+              required 
+              minlength="2" 
+              maxlength="150"
+              pattern="[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]{2,150}"
+              placeholder="Ej: Juan Pérez García"
+              value="{{ nombre if nombre else '' }}"
+            />
+            <div class="invalid-feedback">
+              El nombre debe contener solo letras y espacios, entre 2 y 150 caracteres
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="correo" class="form-label">Correo Electrónico <span class="text-danger">*</span></label>
+            <input 
+              type="email" 
+              class="form-control" 
+              id="correo" 
+              name="correo" 
+              required
+              maxlength="150"
+              placeholder="ejemplo@sujv.mx o ejemplo@gmail.com"
+              value="{{ correo if correo else '' }}"
+            />
+            <div class="invalid-feedback">
+              Por favor ingrese un correo electrónico válido que termine en @sujv.mx, @gmail.com, @hotmail.com o @tectijuana.edu.mx
+            </div>
+            <small class="form-text text-muted">
+              <strong>Importante:</strong> Solo se permiten correos que terminen en <strong>@sujv.mx</strong>, <strong>@gmail.com</strong>, <strong>@hotmail.com</strong> o <strong>@tectijuana.edu.mx</strong>
+            </small>
+          </div>
+          
+          <div class="mb-3">
+            <label for="password" class="form-label">Contraseña <span class="text-danger">*</span></label>
+            <input 
+              type="password" 
+              class="form-control" 
+              id="password" 
+              name="password" 
+              required
+              minlength="6"
+              placeholder="Mínimo 6 caracteres"
+            />
+            <div class="invalid-feedback">
+              La contraseña debe tener al menos 6 caracteres
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="confirm_password" class="form-label">Confirmar Contraseña <span class="text-danger">*</span></label>
+            <input 
+              type="password" 
+              class="form-control" 
+              id="confirm_password" 
+              name="confirm_password" 
+              required
+              minlength="6"
+              placeholder="Repita su contraseña"
+            />
+            <div class="invalid-feedback">
+              Las contraseñas deben coincidir
+            </div>
+          </div>
+          
+          <div class="d-grid mb-3">
+            <button type="submit" class="btn btn-primary">Registrarse</button>
+          </div>
+          
+          <div class="text-center">
+            <small class="text-muted">
+              ¿Ya tienes una cuenta? <a href="{{ url_for('login') }}">Inicia sesión aquí</a>
+            </small>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+  const form = document.getElementById('formRegistro');
+  const correoInput = document.getElementById('correo');
+  const passwordInput = document.getElementById('password');
+  const confirmPasswordInput = document.getElementById('confirm_password');
+  
+  // Validar correo que termine en dominios permitidos
+  const dominiosPermitidos = ['@sujv.mx', '@gmail.com', '@hotmail.com', '@tectijuana.edu.mx'];
+  correoInput.addEventListener('input', function() {
+    const value = this.value.trim().toLowerCase();
+    if (value && !dominiosPermitidos.some(dominio => value.endsWith(dominio))) {
+      this.setCustomValidity('El correo debe terminar en @sujv.mx, @gmail.com, @hotmail.com o @tectijuana.edu.mx');
+    } else {
+      this.setCustomValidity('');
+    }
+  });
+  
+  // Validar que las contraseñas coincidan
+  function validarContrasenas() {
+    if (passwordInput.value !== confirmPasswordInput.value) {
+      confirmPasswordInput.setCustomValidity('Las contraseñas no coinciden');
+    } else {
+      confirmPasswordInput.setCustomValidity('');
+    }
+  }
+  
+  passwordInput.addEventListener('input', validarContrasenas);
+  confirmPasswordInput.addEventListener('input', validarContrasenas);
+  
+  // Validación de número de control
+  const numeroControlInput = document.getElementById('numero_control');
+  numeroControlInput.addEventListener('input', function() {
+    const value = this.value.trim();
+    if (value && !/^[a-zA-Z0-9_-]{3,50}$/.test(value)) {
+      this.setCustomValidity('Solo se permiten letras, números, guiones (-) y guiones bajos (_), entre 3 y 50 caracteres');
+    } else {
+      this.setCustomValidity('');
+    }
+  });
+  
+  // Validación de nombre
+  const nombreInput = document.getElementById('nombre');
+  nombreInput.addEventListener('input', function() {
+    const value = this.value.trim();
+    if (value && !/^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]{2,150}$/.test(value)) {
+      this.setCustomValidity('El nombre solo puede contener letras y espacios');
+    } else {
+      this.setCustomValidity('');
+    }
+  });
+  
+  form.addEventListener('submit', function(event) {
+    // Validar correo antes de enviar
+    const correoValue = correoInput.value.trim().toLowerCase();
+    if (!dominiosPermitidos.some(dominio => correoValue.endsWith(dominio))) {
+      correoInput.setCustomValidity('El correo debe terminar en @sujv.mx, @gmail.com, @hotmail.com o @tectijuana.edu.mx');
+      event.preventDefault();
+      event.stopPropagation();
+      form.classList.add('was-validated');
+      return false;
+    }
+    
+    // Validar contraseñas
+    if (passwordInput.value !== confirmPasswordInput.value) {
+      confirmPasswordInput.setCustomValidity('Las contraseñas no coinciden');
+      event.preventDefault();
+      event.stopPropagation();
+      form.classList.add('was-validated');
+      return false;
+    }
+    
+    if (!form.checkValidity()) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    form.classList.add('was-validated');
+  }, false);
+})();
+</script>
+{% endblock %}
+

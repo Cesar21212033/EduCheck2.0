@@ -20,6 +20,7 @@
         <th>Estado</th>
         <th>Materias</th>
         <th>Registrado</th>
+        <th>Acciones</th>
       </tr>
     </thead>
     <tbody>
@@ -38,6 +39,28 @@
         </td>
         <td>{{ admin.clases|length }}</td>
         <td>{{ admin.creado_en.strftime('%d/%m/%Y') if admin.creado_en else '-' }}</td>
+        <td>
+          <div class="btn-group" role="group">
+            <a href="{{ url_for('admin_restablecer_contraseña', usuario_id=admin.id) }}" 
+               class="btn btn-sm btn-outline-warning" 
+               title="Restablecer contraseña">
+              <i class="bi bi-key"></i> Restablecer Contraseña
+            </a>
+            {% if admin.id != session.get('user_id') and administradores|length > 1 %}
+            <button type="button" 
+                    class="btn btn-sm btn-outline-danger" 
+                    title="Eliminar administrador"
+                    data-bs-toggle="modal" 
+                    data-bs-target="#modalEliminarAdmin{{ admin.id }}">
+              <i class="bi bi-trash"></i> Eliminar
+            </button>
+            {% elif admin.id == session.get('user_id') %}
+            <span class="text-muted small">Tu cuenta</span>
+            {% elif administradores|length <= 1 %}
+            <span class="text-muted small">Último admin</span>
+            {% endif %}
+          </div>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -52,5 +75,112 @@
 <div class="mt-3">
   <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Volver al Dashboard</a>
 </div>
+
+<!-- Modales para eliminar administradores -->
+{% for admin in administradores %}
+{% if admin.id != session.get('user_id') and administradores|length > 1 %}
+<div class="modal fade" id="modalEliminarAdmin{{ admin.id }}" tabindex="-1" aria-labelledby="modalEliminarAdmin{{ admin.id }}Label" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="modalEliminarAdmin{{ admin.id }}Label">
+          <i class="bi bi-exclamation-triangle"></i> Confirmar Eliminación
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="post" action="{{ url_for('eliminar_administrador', admin_id=admin.id) }}" 
+            id="formEliminarAdmin{{ admin.id }}" 
+            class="form-eliminar-admin" 
+            data-admin-id="{{ admin.id }}">
+        <div class="modal-body">
+          <div class="alert alert-danger">
+            <strong> Advertencia:</strong> Esta acción no se puede deshacer.
+          </div>
+          
+          <p>Estás a punto de eliminar al administrador:</p>
+          <ul>
+            <li><strong>Nombre:</strong> {{ admin.nombre_completo }}</li>
+            <li><strong>Usuario:</strong> {{ admin.username }}</li>
+            <li><strong>Correo:</strong> {{ admin.email }}</li>
+            <li><strong>Materias asignadas:</strong> {{ admin.clases|length }}</li>
+          </ul>
+          
+          <p class="text-danger"><strong>Se eliminarán todas las materias asignadas a este administrador.</strong></p>
+          
+          <div class="mb-3">
+            <label for="password_confirmacion{{ admin.id }}" class="form-label">
+              <strong>Contraseña de confirmación:</strong> <span class="text-danger">*</span>
+            </label>
+            <input 
+              type="password" 
+              class="form-control" 
+              id="password_confirmacion{{ admin.id }}" 
+              name="password_confirmacion" 
+              required
+              placeholder="Ingrese la contraseña de confirmación"
+              autocomplete="off"
+            />
+            <small class="form-text text-muted">
+              Se requiere la contraseña de confirmación para eliminar administradores.
+            </small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash"></i> Confirmar Eliminación
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endfor %}
+
+<script>
+// Validación del formulario de eliminación
+(function() {
+  // Inicializar validación para todos los formularios de eliminación
+  const forms = document.querySelectorAll('.form-eliminar-admin');
+  
+  forms.forEach(function(form) {
+    const adminId = form.getAttribute('data-admin-id');
+    const passwordInputId = 'password_confirmacion' + adminId;
+    const passwordInput = document.getElementById(passwordInputId);
+    
+    if (!passwordInput) {
+      return; // Campo de contraseña no encontrado
+    }
+    
+    form.addEventListener('submit', function(event) {
+      if (!passwordInput.value.trim()) {
+        event.preventDefault();
+        event.stopPropagation();
+        passwordInput.setCustomValidity('La contraseña de confirmación es obligatoria');
+        passwordInput.classList.add('is-invalid');
+      } else {
+        passwordInput.setCustomValidity('');
+        passwordInput.classList.remove('is-invalid');
+      }
+      
+      if (!form.checkValidity()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      form.classList.add('was-validated');
+    });
+    
+    // Limpiar validación al escribir
+    passwordInput.addEventListener('input', function() {
+      if (this.value.trim()) {
+        this.setCustomValidity('');
+        this.classList.remove('is-invalid');
+      }
+    });
+  });
+})();
+</script>
+
 {% endblock %}
 

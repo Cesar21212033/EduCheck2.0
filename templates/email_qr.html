@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Código QR de Asistencia</title>
+    <title>Código QR de Asistencia - EduCheck</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -48,11 +48,11 @@
 </head>
 <body>
     <div class="header">
-        <h1>🎓 Sistema de Asistencia QR</h1>
+        <h1>🎓 EduCheck</h1>
     </div>
     
     <div class="content">
-        <h2>Hola {{ estudiante.nombre }},</h2>
+        <h2>Hola {{ estudiante.nombre }}, Bienvenido al sistema EduChech</h2>
         
         <p>Tu código QR de asistencia ha sido generado exitosamente. Este código es único y está asociado a tu número de control: <strong>{{ estudiante.numero_control }}</strong>.</p>
         
@@ -80,12 +80,12 @@
         <p>Si tienes alguna pregunta o necesitas ayuda, por favor contacta a tu maestro.</p>
         
         <p>Saludos,<br>
-        <strong>Sistema de Asistencia QR</strong></p>
+        <strong>EduCheck</strong></p>
     </div>
     
     <div class="footer">
         <p>Este es un correo automático, por favor no respondas a este mensaje.</p>
-        <p>&copy; {{ año_actual }} Sistema de Asistencia QR</p>
+        <p>&copy; {{ año_actual }} EduCheck</p>
     </div>
 </body>
 </html>

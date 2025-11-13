@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bienvenido a EduCheck</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #0d6efd;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #f8f9fa;
+            padding: 30px;
+            border-radius: 0 0 5px 5px;
+        }
+        .info-box {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #0d6efd;
+        }
+        .feature-list {
+            background-color: #e7f3ff;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 12px;
+        }
+        ul {
+            text-align: left;
+            padding-left: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎓 Bienvenido a EduCheck</h1>
+    </div>
+    
+    <div class="content">
+        <h2>Hola {{ nombre_completo }},</h2>
+        
+        <p>¡Bienvenido a <strong>EduCheck</strong>! Tu cuenta ha sido creada exitosamente como <strong>{{ rol_nombre }}</strong>.</p>
+        
+        <div class="info-box">
+            <h3>📋 Tus Credenciales de Acceso</h3>
+            <p><strong>Usuario:</strong> {{ username }}</p>
+            <p><strong>Correo:</strong> {{ email }}</p>
+            <p><strong>Rol:</strong> {{ rol_nombre }}</p>
+        </div>
+        
+        <div class="feature-list">
+            <h4>🔐 Importante: Cambio de Contraseña</h4>
+            <p>Por seguridad, deberás cambiar tu contraseña en tu primer inicio de sesión. Esta es una medida de seguridad para proteger tu cuenta.</p>
+            <p><strong>Pasos a seguir:</strong></p>
+            <ol style="text-align: left;">
+                <li>Inicia sesión con tu usuario y la contraseña temporal proporcionada</li>
+                <li>Serás redirigido automáticamente a la página de cambio de contraseña</li>
+                <li>Establece una nueva contraseña segura</li>
+                <li>Después de cambiar tu contraseña, podrás acceder a todas las funciones del sistema</li>
+            </ol>
+        </div>
+        
+        {% if rol == 'admin' %}
+        <div class="feature-list">
+            <h4>👨‍💼 Funciones de Administrador</h4>
+            <p>Como administrador, tienes acceso a:</p>
+            <ul>
+                <li>Gestionar administradores, profesores y estudiantes</li>
+                <li>Crear y asignar materias a profesores</li>
+                <li>Asignar estudiantes a materias</li>
+                <li>Ver reportes de asistencias de todas las materias</li>
+                <li>Restablecer contraseñas de usuarios</li>
+                <li>Configurar horarios de clases</li>
+            </ul>
+        </div>
+        {% elif rol == 'profesor' %}
+        <div class="feature-list">
+            <h4>👨‍🏫 Funciones de Profesor</h4>
+            <p>Como profesor, puedes:</p>
+            <ul>
+                <li>Ver las materias asignadas a ti</li>
+                <li>Tomar asistencia mediante escaneo de códigos QR</li>
+                <li>Ver la lista de estudiantes de tus materias</li>
+                <li>Consultar reportes de asistencias de tus clases</li>
+                <li>Recibir reportes automáticos de asistencia por correo</li>
+            </ul>
+        </div>
+        {% endif %}
+        
+        <div class="info-box">
+            <h4>📧 Soporte</h4>
+            <p>Si tienes alguna pregunta o necesitas ayuda, por favor contacta al administrador del sistema.</p>
+        </div>
+        
+        <p>Saludos,<br>
+        <strong>Equipo de EduCheck</strong></p>
+    </div>
+    
+    <div class="footer">
+        <p>Este es un correo automático, por favor no respondas a este mensaje.</p>
+        <p>&copy; {{ año_actual }} EduCheck</p>
+    </div>
+</body>
+</html>
+

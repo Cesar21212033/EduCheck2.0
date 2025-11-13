@@ -20,6 +20,7 @@
         <th>Estado</th>
         <th>Materias</th>
         <th>Registrado</th>
+        <th>Acciones</th>
       </tr>
     </thead>
     <tbody>
@@ -38,6 +39,13 @@
         </td>
         <td>{{ profesor.clases|length }}</td>
         <td>{{ profesor.creado_en.strftime('%d/%m/%Y') if profesor.creado_en else '-' }}</td>
+        <td>
+          <a href="{{ url_for('admin_restablecer_contraseña', usuario_id=profesor.id) }}" 
+             class="btn btn-sm btn-outline-warning" 
+             title="Restablecer contraseña">
+            <i class="bi bi-key"></i> Restablecer Contraseña
+          </a>
+        </td>
       </tr>
       {% endfor %}
     </tbody>

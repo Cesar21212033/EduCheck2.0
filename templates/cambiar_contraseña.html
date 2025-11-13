@@ -37,17 +37,20 @@
       </div>
     </div>
     
-    {% if usuario.rol == 'alumno' %}
-      {% if not usuario.password_changed %}
-        <div class="alert alert-warning mt-3">
-          <strong>⚠️ Importante:</strong> Es tu primer inicio de sesión. Tu contraseña inicial es tu número de control.
-          <strong>Debes cambiarla ahora por una contraseña más segura.</strong> Solo podrás cambiarla una vez.
-        </div>
-      {% else %}
-        <div class="alert alert-info mt-3">
-          <strong>Nota:</strong> Ya has cambiado tu contraseña anteriormente. Si olvidaste tu contraseña, contacta al administrador.
-        </div>
-      {% endif %}
+    {% if not usuario.password_changed %}
+      <div class="alert alert-warning mt-3">
+        <strong>⚠️ Importante:</strong> Es tu primer inicio de sesión.
+        {% if usuario.rol == 'alumno' %}
+          Tu contraseña inicial es tu número de control.
+        {% else %}
+          Tu contraseña inicial fue proporcionada por el administrador.
+        {% endif %}
+        <strong>Debes cambiarla ahora por una contraseña más segura.</strong> Solo podrás cambiarla una vez.
+      </div>
+    {% else %}
+      <div class="alert alert-info mt-3">
+        <strong>Nota:</strong> Ya has cambiado tu contraseña anteriormente. Si olvidaste tu contraseña, contacta al administrador.
+      </div>
     {% endif %}
   </div>
 </div>

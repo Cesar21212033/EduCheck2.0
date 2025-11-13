@@ -54,6 +54,66 @@
       </div>
       <small class="form-text text-muted">La materia será asignada al profesor seleccionado</small>
     </div>
+
+    <!-- Sección de Horarios -->
+    <div class="mb-4">
+      <label class="form-label fw-bold">Horarios de la Materia <span class="text-danger">*</span></label>
+      <small class="form-text text-muted d-block mb-3">Seleccione los días de la semana en que se imparte la materia y especifique el horario para cada día.</small>
+      
+      <div class="card">
+        <div class="card-body">
+          {% set dias = [
+            {'nombre': 'lunes', 'label': 'Lunes'},
+            {'nombre': 'martes', 'label': 'Martes'},
+            {'nombre': 'miercoles', 'label': 'Miércoles'},
+            {'nombre': 'jueves', 'label': 'Jueves'},
+            {'nombre': 'viernes', 'label': 'Viernes'}
+          ] %}
+          
+          {% for dia in dias %}
+          <div class="row mb-3 align-items-center horario-dia-row" data-dia="{{ dia.nombre }}">
+            <div class="col-md-2">
+              <div class="form-check">
+                <input 
+                  class="form-check-input horario-checkbox" 
+                  type="checkbox" 
+                  id="horario_{{ dia.nombre }}_activo" 
+                  name="horario_{{ dia.nombre }}_activo"
+                  onchange="toggleHorarioDia('{{ dia.nombre }}')"
+                />
+                <label class="form-check-label fw-bold" for="horario_{{ dia.nombre }}_activo">
+                  {{ dia.label }}
+                </label>
+              </div>
+            </div>
+            <div class="col-md-5 horario-campos" style="display: none;">
+              <label for="horario_{{ dia.nombre }}_inicio" class="form-label small">Hora Inicio</label>
+              <input 
+                type="time" 
+                class="form-control form-control-sm" 
+                id="horario_{{ dia.nombre }}_inicio" 
+                name="horario_{{ dia.nombre }}_inicio"
+                onchange="validarHorario('{{ dia.nombre }}')"
+              />
+            </div>
+            <div class="col-md-5 horario-campos" style="display: none;">
+              <label for="horario_{{ dia.nombre }}_fin" class="form-label small">Hora Fin</label>
+              <input 
+                type="time" 
+                class="form-control form-control-sm" 
+                id="horario_{{ dia.nombre }}_fin" 
+                name="horario_{{ dia.nombre }}_fin"
+                onchange="validarHorario('{{ dia.nombre }}')"
+              />
+            </div>
+          </div>
+          {% endfor %}
+          
+          <div id="horario-error" class="text-danger small" style="display: none;"></div>
+        </div>
+      </div>
+    </div>
+
     <button type="submit" class="btn btn-primary">Crear y Asignar Materia</button>
     <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Cancelar</a>
   </form>
@@ -74,7 +134,94 @@
         }
       });
 
+      // Función para mostrar/ocultar campos de horario según el checkbox
+      window.toggleHorarioDia = function(dia) {
+        const checkbox = document.getElementById(`horario_${dia}_activo`);
+        const campos = document.querySelectorAll(`[data-dia="${dia}"] .horario-campos`);
+        const inicioInput = document.getElementById(`horario_${dia}_inicio`);
+        const finInput = document.getElementById(`horario_${dia}_fin`);
+        
+        if (checkbox.checked) {
+          campos.forEach(campo => campo.style.display = 'block');
+          inicioInput.required = true;
+          finInput.required = true;
+        } else {
+          campos.forEach(campo => campo.style.display = 'none');
+          inicioInput.required = false;
+          finInput.required = false;
+          inicioInput.value = '';
+          finInput.value = '';
+        }
+        validarHorarios();
+      };
+
+      // Función para validar que la hora fin sea mayor que la hora inicio
+      window.validarHorario = function(dia) {
+        const inicioInput = document.getElementById(`horario_${dia}_inicio`);
+        const finInput = document.getElementById(`horario_${dia}_fin`);
+        const errorDiv = document.getElementById('horario-error');
+        
+        if (inicioInput.value && finInput.value) {
+          const inicio = inicioInput.value;
+          const fin = finInput.value;
+          
+          if (fin <= inicio) {
+            inicioInput.setCustomValidity('La hora de fin debe ser mayor que la hora de inicio');
+            finInput.setCustomValidity('La hora de fin debe ser mayor que la hora de inicio');
+            errorDiv.textContent = `Error en ${dia}: La hora de fin debe ser mayor que la hora de inicio`;
+            errorDiv.style.display = 'block';
+            return false;
+          } else {
+            inicioInput.setCustomValidity('');
+            finInput.setCustomValidity('');
+            validarHorarios();
+            return true;
+          }
+        }
+        return true;
+      };
+
+      // Función para validar que al menos un día tenga horario configurado
+      function validarHorarios() {
+        const checkboxes = document.querySelectorAll('.horario-checkbox:checked');
+        const errorDiv = document.getElementById('horario-error');
+        
+        if (checkboxes.length === 0) {
+          errorDiv.textContent = 'Debe seleccionar al menos un día de la semana con su horario';
+          errorDiv.style.display = 'block';
+          return false;
+        }
+        
+        // Validar que cada día seleccionado tenga horas completas
+        let todosValidos = true;
+        checkboxes.forEach(checkbox => {
+          const dia = checkbox.id.replace('horario_', '').replace('_activo', '');
+          const inicioInput = document.getElementById(`horario_${dia}_inicio`);
+          const finInput = document.getElementById(`horario_${dia}_fin`);
+          
+          if (!inicioInput.value || !finInput.value) {
+            todosValidos = false;
+            errorDiv.textContent = `Debe especificar hora de inicio y fin para todos los días seleccionados`;
+            errorDiv.style.display = 'block';
+          } else if (!validarHorario(dia)) {
+            todosValidos = false;
+          }
+        });
+        
+        if (todosValidos && checkboxes.length > 0) {
+          errorDiv.style.display = 'none';
+        }
+        
+        return todosValidos;
+      }
+
       form.addEventListener('submit', function(event) {
+        // Validar horarios antes de enviar
+        if (!validarHorarios()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        
         if (!form.checkValidity()) {
           event.preventDefault();
           event.stopPropagation();

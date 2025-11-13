@@ -14,7 +14,7 @@
   <div class="col-md-4">
     <div class="card text-white bg-primary">
       <div class="card-body">
-        <h5 class="card-title">Mis Materias</h5>
+        <h5 class="card-title">{% if usuario.rol == 'admin' %}Todas las Materias{% else %}Mis Materias{% endif %}</h5>
         <h2 class="mb-0">{{ clases|length }}</h2>
       </div>
     </div>
@@ -37,7 +37,7 @@
   </div>
 </div>
 
-<h3 class="mb-3">Mis Materias</h3>
+<h3 class="mb-3">{% if usuario.rol == 'admin' %}Todas las Materias{% else %}Mis Materias{% endif %}</h3>
 
 {% if clases %}
 <div class="row">
@@ -48,11 +48,27 @@
         <h5 class="card-title">{{ clase.nombre_clase }}</h5>
         <p class="card-text">
           <small class="text-muted">Código: {{ clase.codigo_clase }}</small><br>
-          <small class="text-muted">Estudiantes: {{ clase.estudiantes.count() }}</small>
+          {% if usuario.rol == 'admin' %}
+          <small class="text-muted">
+            <i class="bi bi-person-badge"></i> <strong>Profesor:</strong> 
+            {% if clase.maestro %}
+              {{ clase.maestro.nombre_completo }}
+            {% else %}
+              <span class="text-danger">Sin asignar</span>
+            {% endif %}
+          </small><br>
+          {% endif %}
+          <small class="text-muted">
+            <i class="bi bi-people"></i> Estudiantes: {{ clase.estudiantes.count() }}
+          </small>
         </p>
         <div class="d-grid gap-2">
           <a href="{{ url_for('detalle_materia', clase_id=clase.id) }}" class="btn btn-outline-primary btn-sm">
-            Gestionar Materia
+            {% if usuario.rol == 'admin' %}
+              Ver Detalles
+            {% else %}
+              Gestionar Materia
+            {% endif %}
           </a>
         </div>
       </div>

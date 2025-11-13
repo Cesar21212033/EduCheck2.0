@@ -2,10 +2,13 @@ import os
 import re
 import json
 import base64
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail, Message
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import atexit
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import qrcode
@@ -125,6 +128,32 @@ class Clase(db.Model):
     creado_en = db.Column(db.DateTime, default=datetime.utcnow)
     # Relación muchos a muchos con estudiantes
     estudiantes = db.relationship('Estudiante', secondary='estudiante_clase', back_populates='clases', lazy='dynamic')
+    # Relación uno a muchos con horarios
+    horarios = db.relationship('HorarioClase', backref='clase', lazy='dynamic', cascade='all, delete-orphan')
+
+class HorarioClase(db.Model):
+    __tablename__ = 'horarios_clase'
+    id = db.Column(db.Integer, primary_key=True)
+    clase_id = db.Column(db.Integer, db.ForeignKey('clases.id', ondelete='CASCADE'), nullable=False)
+    dia_semana = db.Column(db.Integer, nullable=False)  # 1=Lunes, 2=Martes, 3=Miércoles, 4=Jueves, 5=Viernes
+    hora_inicio = db.Column(db.Time, nullable=False)
+    hora_fin = db.Column(db.Time, nullable=False)
+    creado_en = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        db.UniqueConstraint('clase_id', 'dia_semana', name='unique_clase_dia'),
+    )
+
+class ReporteEnviado(db.Model):
+    __tablename__ = 'reportes_enviados'
+    id = db.Column(db.Integer, primary_key=True)
+    clase_id = db.Column(db.Integer, db.ForeignKey('clases.id', ondelete='CASCADE'), nullable=False)
+    fecha_clase = db.Column(db.Date, nullable=False)
+    enviado_en = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        db.UniqueConstraint('clase_id', 'fecha_clase', name='unique_reporte_dia'),
+    )
 
 # Tabla de asociación muchos a muchos entre Estudiante y Clase
 estudiante_clase = db.Table('estudiante_clase',
@@ -323,6 +352,46 @@ def generar_qr_estudiante(numero_control):
     qr_base64 = base64.b64encode(buf.read()).decode('utf-8')
     return qr_base64
 
+def enviar_correo_bienvenida(usuario, password_temporal):
+    """Envía correo de bienvenida a admin o profesor"""
+    if not usuario.email:
+        return False, "El usuario no tiene correo electrónico registrado"
+    
+    # Verificar configuración de correo
+    mail_password = app.config.get('MAIL_PASSWORD', '') or os.getenv('MAIL_PASSWORD', '')
+    mail_username = app.config.get('MAIL_USERNAME', '') or os.getenv('MAIL_USERNAME', '')
+    
+    if not mail_password or mail_password.strip() == '':
+        app.logger.warning('MAIL_PASSWORD no configurada, no se puede enviar correo de bienvenida')
+        return False, "Configuración de correo incompleta"
+    
+    try:
+        año_actual = datetime.now().year
+        rol_nombre = 'Administrador' if usuario.rol == 'admin' else 'Profesor'
+        
+        msg = Message(
+            subject=f'Bienvenido a EduCheck - {rol_nombre}',
+            recipients=[usuario.email],
+            html=render_template('email_bienvenida.html', 
+                               nombre_completo=usuario.nombre_completo,
+                               username=usuario.username,
+                               email=usuario.email,
+                               rol=usuario.rol,
+                               rol_nombre=rol_nombre,
+                               password_temporal=password_temporal,
+                               año_actual=año_actual),
+            sender=app.config.get('MAIL_DEFAULT_SENDER', mail_username)
+        )
+        
+        mail.init_app(app)
+        mail.send(msg)
+        
+        return True, "Correo de bienvenida enviado exitosamente"
+    except Exception as e:
+        error_msg = str(e)
+        app.logger.error(f'Error al enviar correo de bienvenida: {error_msg}')
+        return False, f"Error al enviar correo: {error_msg}"
+
 def enviar_qr_por_correo(estudiante, qr_base64):
     """Envía el QR del estudiante por correo electrónico"""
     if not estudiante.correo:
@@ -441,18 +510,17 @@ def login():
                 session['nombre'] = usuario.nombre_completo
                 session['rol'] = usuario.rol
                 flash(f'Bienvenido, {usuario.nombre_completo}', 'success')
+                
+                # Si el usuario no ha cambiado su contraseña, redirigir a cambiar contraseña
+                if not usuario.password_changed:
+                    flash('Por favor, cambia tu contraseña antes de continuar', 'info')
+                    return redirect(url_for('cambiar_contraseña'))
+                
                 # Redirigir según el rol
-                if usuario.is_admin():
-                    return redirect(url_for('dashboard'))
-                elif usuario.is_profesor():
-                    return redirect(url_for('dashboard'))
-                elif usuario.is_alumno():
-                    # Si es alumno y no ha cambiado su contraseña, redirigir a cambiar contraseña
-                    if not usuario.password_changed:
-                        flash('Por favor, cambia tu contraseña inicial por seguridad', 'warning')
-                        return redirect(url_for('cambiar_contraseña'))
+                if usuario.is_alumno():
                     return redirect(url_for('alumno_dashboard'))
-                return redirect(url_for('dashboard'))
+                else:
+                    return redirect(url_for('dashboard'))
             else:
                 flash('Usuario o contraseña incorrectos', 'danger')
                 return redirect(url_for('login'))
@@ -542,6 +610,144 @@ def alumno_dashboard():
                          clases=clases_estudiante,
                          asistencias=asistencias)
 
+# Registro público de estudiantes (solo con correo @sujv.mx)
+@app.route('/registro-estudiante', methods=['GET', 'POST'])
+def registro_estudiante():
+    # Si ya está autenticado, redirigir al dashboard
+    if 'user_id' in session:
+        usuario = get_current_user()
+        if usuario:
+            if usuario.is_alumno():
+                return redirect(url_for('alumno_dashboard'))
+            else:
+                return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        num = request.form.get('numero_control', '').strip().upper()
+        nombre = request.form.get('nombre', '').strip()
+        correo = request.form.get('correo', '').strip().lower()
+        password = request.form.get('password', '').strip()
+        confirm_password = request.form.get('confirm_password', '').strip()
+        
+        # Validaciones
+        errores = []
+        
+        # Validar número de control
+        if not num:
+            errores.append('El número de control es obligatorio')
+        elif not validar_numero_control(num):
+            errores.append('El número de control debe tener entre 3 y 50 caracteres alfanuméricos (puede incluir guiones y guiones bajos)')
+        
+        # Validar nombre
+        if not nombre:
+            errores.append('El nombre es obligatorio')
+        elif not validar_nombre(nombre):
+            errores.append('El nombre debe contener solo letras y espacios, entre 2 y 150 caracteres')
+        
+        # Validar correo - DEBE terminar en @sujv.mx, @gmail.com, @hotmail.com o @tectijuana.edu.mx
+        dominios_permitidos = ['@sujv.mx', '@gmail.com', '@hotmail.com', '@tectijuana.edu.mx']
+        if not correo:
+            errores.append('El correo electrónico es obligatorio')
+        elif not validar_email(correo):
+            errores.append('El formato del correo electrónico no es válido')
+        elif not any(correo.endswith(dominio) for dominio in dominios_permitidos):
+            errores.append('Solo se permiten correos electrónicos que terminen en @sujv.mx, @gmail.com, @hotmail.com o @tectijuana.edu.mx')
+        
+        # Validar contraseña
+        if not password:
+            errores.append('La contraseña es obligatoria')
+        elif len(password) < 6:
+            errores.append('La contraseña debe tener al menos 6 caracteres')
+        
+        if password != confirm_password:
+            errores.append('Las contraseñas no coinciden')
+        
+        # Verificar si ya existe un estudiante con ese número de control (case-insensitive)
+        existe_estudiante = Estudiante.query.filter(
+            db.func.upper(Estudiante.numero_control) == num.upper()
+        ).first()
+        
+        if existe_estudiante:
+            errores.append(f'Ya existe un estudiante con el número de control "{existe_estudiante.numero_control}"')
+        
+        # Verificar si ya existe un usuario con ese correo (case-insensitive)
+        if correo:
+            existe_usuario_correo = Usuario.query.filter(
+                db.func.lower(Usuario.email) == correo.lower()
+            ).first()
+            
+            if existe_usuario_correo:
+                errores.append(f'Ya existe un usuario registrado con el correo electrónico "{correo}". No se pueden registrar correos duplicados.')
+        
+        # Verificar si ya existe un usuario con ese username (número de control)
+        existe_username = Usuario.query.filter_by(username=num.upper()).first()
+        if existe_username:
+            errores.append(f'Ya existe un usuario con el número de control "{num}"')
+        
+        if errores:
+            for error in errores:
+                flash(error, 'danger')
+            return render_template('registro_estudiante.html', 
+                                 numero_control=num, 
+                                 nombre=nombre, 
+                                 correo=correo)
+        
+        # Generar QR
+        try:
+            qr_base64 = generar_qr_estudiante(num)
+        except Exception as e:
+            flash(f'Error al generar QR: {str(e)}', 'danger')
+            return render_template('registro_estudiante.html',
+                                 numero_control=num,
+                                 nombre=nombre,
+                                 correo=correo)
+        
+        # Crear usuario tipo alumno
+        username_alumno = num.upper()
+        # Asegurar que el username sea único
+        contador = 1
+        username_original = username_alumno
+        while Usuario.query.filter_by(username=username_alumno).first():
+            username_alumno = f"{username_original}_{contador}"
+            contador += 1
+        
+        # Crear usuario alumno
+        usuario_alumno = Usuario(
+            username=username_alumno,
+            email=correo,
+            nombre_completo=nombre,
+            rol='alumno',
+            password_changed=True  # Ya estableció su contraseña durante el registro
+        )
+        usuario_alumno.set_password(password)
+        db.session.add(usuario_alumno)
+        db.session.flush()
+        
+        # Crear estudiante vinculado al usuario
+        est = Estudiante(
+            numero_control=num,
+            nombre=nombre,
+            correo=correo,
+            qr_code=qr_base64,
+            usuario_id=usuario_alumno.id
+        )
+        db.session.add(est)
+        db.session.commit()
+        
+        # Enviar QR por correo
+        if correo:
+            exito, mensaje = enviar_qr_por_correo(est, qr_base64)
+            if exito:
+                flash(f'Registro exitoso. Tu código QR ha sido enviado a {correo}. Puedes iniciar sesión ahora.', 'success')
+            else:
+                flash(f'Registro exitoso, pero hubo un problema al enviar el correo: {mensaje}. Tu código QR está disponible en tu panel.', 'warning')
+        else:
+            flash('Registro exitoso con QR generado', 'success')
+        
+        return redirect(url_for('login'))
+    
+    return render_template('registro_estudiante.html')
+
 # Registrar estudiante (solo admin)
 @app.route('/estudiantes/nuevo', methods=['GET','POST'])
 @admin_required
@@ -581,13 +787,23 @@ def nuevo_estudiante():
             return redirect(url_for('nuevo_estudiante'))
         
         # Verificar si ya existe un estudiante con ese número de control (case-insensitive)
-        existe = Estudiante.query.filter(
+        existe_estudiante = Estudiante.query.filter(
             db.func.upper(Estudiante.numero_control) == num.upper()
         ).first()
         
-        if existe:
-            flash(f'Ya existe un estudiante con el número de control "{existe.numero_control}". No se pueden registrar números de control duplicados.', 'danger')
+        if existe_estudiante:
+            flash(f'Ya existe un estudiante con el número de control "{existe_estudiante.numero_control}". No se pueden registrar números de control duplicados.', 'danger')
             return redirect(url_for('nuevo_estudiante'))
+        
+        # Verificar si ya existe un usuario con ese correo electrónico (case-insensitive)
+        if correo:
+            existe_usuario_correo = Usuario.query.filter(
+                db.func.lower(Usuario.email) == correo.lower()
+            ).first()
+            
+            if existe_usuario_correo:
+                flash(f'Ya existe un usuario registrado con el correo electrónico "{correo}". No se pueden registrar correos duplicados.', 'danger')
+                return redirect(url_for('nuevo_estudiante'))
         
         # Generar QR
         try:
@@ -747,8 +963,58 @@ def nueva_clase():
             flash('Ya existe una clase con ese código', 'warning')
             return render_template('nueva_clase.html', profesores=profesores, codigo=codigo, nombre=nombre, profesor_id=profesor_id)
         
+        # Procesar horarios
+        horarios_data = []
+        dias_semana = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes']
+        dias_numeros = {'lunes': 1, 'martes': 2, 'miercoles': 3, 'jueves': 4, 'viernes': 5}
+        
+        for dia in dias_semana:
+            dia_seleccionado = request.form.get(f'horario_{dia}_activo', '') == 'on'
+            if dia_seleccionado:
+                hora_inicio_str = request.form.get(f'horario_{dia}_inicio', '').strip()
+                hora_fin_str = request.form.get(f'horario_{dia}_fin', '').strip()
+                
+                if not hora_inicio_str or not hora_fin_str:
+                    errores.append(f'Debe especificar hora de inicio y fin para {dia.capitalize()}')
+                else:
+                    try:
+                        hora_inicio = datetime.strptime(hora_inicio_str, '%H:%M').time()
+                        hora_fin = datetime.strptime(hora_fin_str, '%H:%M').time()
+                        
+                        if hora_fin <= hora_inicio:
+                            errores.append(f'La hora de fin debe ser mayor que la hora de inicio para {dia.capitalize()}')
+                        else:
+                            horarios_data.append({
+                                'dia': dias_numeros[dia],
+                                'hora_inicio': hora_inicio,
+                                'hora_fin': hora_fin
+                            })
+                    except ValueError:
+                        errores.append(f'Formato de hora inválido para {dia.capitalize()}. Use formato HH:MM')
+        
+        if not horarios_data:
+            errores.append('Debe seleccionar al menos un día de la semana con su horario')
+        
+        if errores:
+            for error in errores:
+                flash(error, 'danger')
+            return render_template('nueva_clase.html', profesores=profesores, codigo=codigo, nombre=nombre, profesor_id=profesor_id)
+        
+        # Crear la clase
         c = Clase(codigo_clase=codigo, nombre_clase=nombre, usuario_id=profesor_id)
         db.session.add(c)
+        db.session.flush()  # Para obtener el ID de la clase
+        
+        # Crear los horarios
+        for horario_data in horarios_data:
+            horario = HorarioClase(
+                clase_id=c.id,
+                dia_semana=horario_data['dia'],
+                hora_inicio=horario_data['hora_inicio'],
+                hora_fin=horario_data['hora_fin']
+            )
+            db.session.add(horario)
+        
         db.session.commit()
         flash('Materia creada y asignada al profesor exitosamente', 'success')
         return redirect(url_for('dashboard'))
@@ -851,10 +1117,15 @@ def alumno_mi_qr():
 def cambiar_contraseña():
     usuario = get_current_user()
     
-    # Si es alumno y ya cambió su contraseña, no permitir cambiarla de nuevo
-    if usuario.is_alumno() and usuario.password_changed:
-        flash('Ya has cambiado tu contraseña. Solo puedes cambiarla una vez. Si olvidaste tu contraseña, contacta al administrador.', 'warning')
-        return redirect(url_for('alumno_dashboard'))
+    # Si el usuario ya cambió su contraseña, no permitir cambiarla de nuevo (excepto admin restableciendo)
+    # Los usuarios solo pueden cambiar su contraseña una vez
+    if usuario.password_changed:
+        if usuario.is_alumno():
+            flash('Ya has cambiado tu contraseña. Solo puedes cambiarla una vez. Si olvidaste tu contraseña, contacta al administrador.', 'warning')
+            return redirect(url_for('alumno_dashboard'))
+        else:
+            flash('Ya has cambiado tu contraseña. Solo puedes cambiarla una vez. Si olvidaste tu contraseña, contacta al administrador.', 'warning')
+            return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
         password_actual = request.form.get('password_actual', '')
@@ -887,9 +1158,8 @@ def cambiar_contraseña():
         # Actualizar contraseña
         try:
             usuario.set_password(password_nueva)
-            # Marcar que el alumno ya cambió su contraseña
-            if usuario.is_alumno():
-                usuario.password_changed = True
+            # Marcar que el usuario ya cambió su contraseña (aplica para todos los roles)
+            usuario.password_changed = True
             db.session.commit()
             flash('Contraseña actualizada exitosamente', 'success')
             
@@ -919,10 +1189,67 @@ def detalle_materia(clase_id):
     todos_estudiantes = Estudiante.query.order_by(Estudiante.nombre).all()
     # Filtrar estudiantes no asignados
     estudiantes_no_asignados = [e for e in todos_estudiantes if e not in estudiantes_asignados]
+    # Obtener horarios de la clase
+    horarios = clase.horarios.order_by(HorarioClase.dia_semana).all()
+    # Obtener el día de la semana actual (1=Lunes, 2=Martes, ..., 5=Viernes)
+    dia_semana_actual = date.today().weekday() + 1
+    # Obtener el horario de hoy si existe
+    horario_hoy = None
+    for horario in horarios:
+        if horario.dia_semana == dia_semana_actual:
+            horario_hoy = horario
+            break
+    
+    # Verificar si estamos dentro del horario permitido para pase de lista
+    # Permitir desde 15 minutos antes del inicio hasta 5 minutos después del inicio
+    puede_registrar = False
+    motivo_bloqueo = None
+    ahora = datetime.now().time()
+    
+    if not horario_hoy:
+        puede_registrar = False
+        motivo_bloqueo = "No hay clase programada para hoy"
+    else:
+        # Calcular hora mínima (15 minutos antes del inicio)
+        hora_inicio_dt = datetime.combine(date.today(), horario_hoy.hora_inicio)
+        hora_minima_dt = hora_inicio_dt - timedelta(minutes=15)
+        hora_minima = hora_minima_dt.time()
+        
+        # Calcular hora máxima (5 minutos después del inicio)
+        hora_maxima_dt = hora_inicio_dt + timedelta(minutes=5)
+        hora_maxima = hora_maxima_dt.time()
+        
+        if ahora < hora_minima:
+            puede_registrar = False
+            motivo_bloqueo = f"El pase de lista está disponible desde las {hora_minima.strftime('%H:%M')} (15 min antes del inicio)"
+        elif ahora > hora_maxima:
+            puede_registrar = False
+            motivo_bloqueo = f"El pase de lista cerró a las {hora_maxima.strftime('%H:%M')} (5 min después del inicio)"
+        else:
+            puede_registrar = True
+    
+    # Calcular horas de pase de lista para el template
+    hora_minima_pase = None
+    hora_maxima_pase = None
+    if horario_hoy:
+        hora_inicio_dt = datetime.combine(date.today(), horario_hoy.hora_inicio)
+        hora_minima_dt = hora_inicio_dt - timedelta(minutes=15)
+        hora_minima_pase = hora_minima_dt.time()
+        hora_maxima_dt = hora_inicio_dt + timedelta(minutes=5)
+        hora_maxima_pase = hora_maxima_dt.time()
+    
     return render_template('detalle_materia.html', 
                          clase=clase, 
                          estudiantes_asignados=estudiantes_asignados,
-                         estudiantes_no_asignados=estudiantes_no_asignados)
+                         estudiantes_no_asignados=estudiantes_no_asignados,
+                         horarios=horarios,
+                         horario_hoy=horario_hoy,
+                         dia_semana_actual=dia_semana_actual,
+                         puede_registrar=puede_registrar,
+                         motivo_bloqueo=motivo_bloqueo,
+                         hora_actual=ahora,
+                         hora_minima_pase=hora_minima_pase,
+                         hora_maxima_pase=hora_maxima_pase)
 
 # Asignar estudiante a materia
 @app.route('/materia/<int:clase_id>/asignar', methods=['POST'])
@@ -1048,14 +1375,68 @@ def registrar_asistencia():
         return jsonify({"ok": False, "msg": "Clase no encontrada"}), 404
 
     # Verificar que el estudiante esté asignado a la clase
-    if estudiante not in clase.estudiantes.all():
+    # Usar una consulta más eficiente para verificar la relación
+    estudiante_en_clase = db.session.query(estudiante_clase).filter_by(
+        estudiante_id=estudiante.id,
+        clase_id=clase.id
+    ).first()
+    
+    if not estudiante_en_clase:
         return jsonify({
             "ok": False, 
-            "msg": f"El estudiante {estudiante.nombre} no está asignado a esta materia"
+            "msg": f"El estudiante {estudiante.nombre} ({estudiante.numero_control}) no está asignado a la materia '{clase.nombre_clase}'. Solo se pueden registrar asistencias de estudiantes asignados a esta clase.",
+            "estudiante": estudiante.nombre,
+            "numero_control": estudiante.numero_control,
+            "clase": clase.nombre_clase
         }), 403
 
     hoy = date.today()
     ahora = datetime.now().time()
+    
+    # Obtener el día de la semana (0=Lunes, 1=Martes, ..., 4=Viernes)
+    dia_semana_actual = hoy.weekday() + 1  # weekday() retorna 0-6, necesitamos 1-5
+    
+    # Verificar si hay horario configurado para este día
+    horario_hoy = HorarioClase.query.filter_by(
+        clase_id=clase.id,
+        dia_semana=dia_semana_actual
+    ).first()
+    
+    if not horario_hoy:
+        dias_nombres = {1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes'}
+        return jsonify({
+            "ok": False,
+            "msg": f"No hay clase programada para {dias_nombres.get(dia_semana_actual, 'este día')}. La materia '{clase.nombre_clase}' no tiene horario configurado para este día.",
+            "estudiante": estudiante.nombre,
+            "clase": clase.nombre_clase
+        }), 400
+    
+    # Validar que la hora actual esté dentro del intervalo permitido para pase de lista
+    # Permitir desde 15 minutos antes del inicio hasta 5 minutos después del inicio
+    hora_inicio_dt = datetime.combine(hoy, horario_hoy.hora_inicio)
+    hora_minima_dt = hora_inicio_dt - timedelta(minutes=15)
+    hora_minima = hora_minima_dt.time()
+    
+    hora_maxima_dt = hora_inicio_dt + timedelta(minutes=5)
+    hora_maxima = hora_maxima_dt.time()
+    
+    if ahora < hora_minima:
+        return jsonify({
+            "ok": False,
+            "msg": f"Fuera del horario de pase de lista. El pase de lista está disponible desde las {hora_minima.strftime('%H:%M')} (15 minutos antes del inicio de clase). Hora actual: {ahora.strftime('%H:%M')}",
+            "estudiante": estudiante.nombre,
+            "clase": clase.nombre_clase,
+            "horario": f"Pase de lista: {hora_minima.strftime('%H:%M')} - {hora_maxima.strftime('%H:%M')}"
+        }), 400
+    
+    if ahora > hora_maxima:
+        return jsonify({
+            "ok": False,
+            "msg": f"Fuera del horario de pase de lista. El pase de lista cerró a las {hora_maxima.strftime('%H:%M')} (5 minutos después del inicio de clase). Hora actual: {ahora.strftime('%H:%M')}",
+            "estudiante": estudiante.nombre,
+            "clase": clase.nombre_clase,
+            "horario": f"Pase de lista: {hora_minima.strftime('%H:%M')} - {hora_maxima.strftime('%H:%M')}"
+        }), 400
     
     # Verificar si ya tiene asistencia hoy
     existe = Asistencia.query.filter_by(estudiante_id=estudiante.id, clase_id=clase.id, fecha=hoy).first()
@@ -1128,6 +1509,274 @@ def ver_asistencias():
     
     return render_template('asistencias.html', rows=rows, clases=clases, usuario=usuario,
                          clase_id=clase_id, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
+
+# Función para generar reporte Excel de una clase específica del día actual
+def generar_reporte_excel_clase_dia(clase_id, fecha_clase):
+    """Genera un reporte Excel de asistencias para una clase específica del día indicado"""
+    try:
+        clase = Clase.query.get(clase_id)
+        if not clase:
+            return None, "Clase no encontrada"
+        
+        profesor = Usuario.query.get(clase.usuario_id)
+        if not profesor:
+            return None, "Profesor no encontrado"
+        
+        # Obtener asistencias del día específico para esta clase
+        query = db.session.query(Asistencia, Estudiante)\
+            .join(Estudiante, Estudiante.id == Asistencia.estudiante_id)\
+            .filter(Asistencia.clase_id == clase_id)\
+            .filter(Asistencia.fecha == fecha_clase)
+        
+        rows = query.order_by(Asistencia.hora.asc()).all()
+        
+        # Crear workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Reporte de Asistencias"
+        
+        # Estilos
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF", size=12)
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        center_alignment = Alignment(horizontal='center', vertical='center')
+        
+        # Encabezado del reporte
+        ws.merge_cells('A1:H1')
+        ws['A1'] = f'REPORTE DE ASISTENCIAS - {clase.nombre_clase.upper()}'
+        ws['A1'].font = Font(bold=True, size=14)
+        ws['A1'].alignment = center_alignment
+        
+        ws.merge_cells('A2:H2')
+        ws['A2'] = f'Fecha: {fecha_clase.strftime("%d/%m/%Y")} | Profesor: {profesor.nombre_completo}'
+        ws['A2'].alignment = center_alignment
+        ws['A2'].font = Font(italic=True)
+        
+        ws.merge_cells('A3:H3')
+        fecha_generacion = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        ws['A3'] = f'Generado el: {fecha_generacion}'
+        ws['A3'].alignment = center_alignment
+        ws['A3'].font = Font(italic=True, size=10)
+        
+        row_start = 5
+        
+        # Encabezados de columnas
+        headers = [
+            'Número de Control',
+            'Nombre del Estudiante',
+            'Correo',
+            'Hora de Asistencia',
+            'Método',
+            'Estado'
+        ]
+        
+        for col, header in enumerate(headers, start=1):
+            cell = ws.cell(row=row_start, column=col, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.border = border
+            cell.alignment = center_alignment
+        
+        # Obtener todos los estudiantes asignados a la clase
+        estudiantes_asignados = clase.estudiantes.all()
+        estudiantes_dict = {est.id: est for est in estudiantes_asignados}
+        asistencias_dict = {row[0].estudiante_id: row[0] for row in rows}
+        
+        # Datos: mostrar todos los estudiantes asignados, marcando quién asistió
+        row_idx = row_start + 1
+        for estudiante in estudiantes_asignados:
+            asistencia = asistencias_dict.get(estudiante.id)
+            
+            ws.cell(row=row_idx, column=1, value=estudiante.numero_control).border = border
+            ws.cell(row=row_idx, column=2, value=estudiante.nombre).border = border
+            ws.cell(row=row_idx, column=3, value=estudiante.correo or 'N/A').border = border
+            
+            if asistencia:
+                ws.cell(row=row_idx, column=4, value=asistencia.hora.strftime('%H:%M:%S')).border = border
+                ws.cell(row=row_idx, column=5, value=asistencia.metodo or 'QR').border = border
+                ws.cell(row=row_idx, column=6, value='Presente').border = border
+                ws.cell(row=row_idx, column=6).fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+            else:
+                ws.cell(row=row_idx, column=4, value='N/A').border = border
+                ws.cell(row=row_idx, column=5, value='N/A').border = border
+                ws.cell(row=row_idx, column=6, value='Ausente').border = border
+                ws.cell(row=row_idx, column=6).fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+            
+            row_idx += 1
+        
+        # Ajustar ancho de columnas
+        column_widths = [20, 35, 30, 18, 12, 15]
+        for col, width in enumerate(column_widths, start=1):
+            ws.column_dimensions[get_column_letter(col)].width = width
+        
+        # Resumen al final
+        total_estudiantes = len(estudiantes_asignados)
+        total_asistencias = len(rows)
+        total_ausentes = total_estudiantes - total_asistencias
+        
+        row_summary = row_idx + 2
+        ws.merge_cells(f'A{row_summary}:H{row_summary}')
+        ws[f'A{row_summary}'] = f'RESUMEN: Total Estudiantes: {total_estudiantes} | Presentes: {total_asistencias} | Ausentes: {total_ausentes}'
+        ws[f'A{row_summary}'].font = Font(bold=True, size=12)
+        ws[f'A{row_summary}'].alignment = center_alignment
+        ws[f'A{row_summary}'].fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+        
+        # Guardar en BytesIO
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        nombre_archivo = f'Reporte_Asistencias_{clase.codigo_clase}_{fecha_clase.strftime("%Y%m%d")}.xlsx'
+        
+        return output, nombre_archivo
+    except Exception as e:
+        app.logger.error(f'Error al generar reporte Excel: {str(e)}')
+        return None, f"Error al generar reporte: {str(e)}"
+
+# Función para enviar reporte por correo al profesor
+def enviar_reporte_por_correo(clase_id, fecha_clase):
+    """Envía el reporte de asistencia del día por correo al profesor"""
+    try:
+        clase = Clase.query.get(clase_id)
+        if not clase:
+            app.logger.error(f'Clase {clase_id} no encontrada para enviar reporte')
+            return False
+        
+        profesor = Usuario.query.get(clase.usuario_id)
+        if not profesor or not profesor.email:
+            app.logger.error(f'Profesor de clase {clase_id} no tiene correo configurado')
+            return False
+        
+        # Verificar si ya se envió el reporte para este día
+        reporte_existente = ReporteEnviado.query.filter_by(
+            clase_id=clase_id,
+            fecha_clase=fecha_clase
+        ).first()
+        
+        if reporte_existente:
+            app.logger.info(f'Reporte ya enviado para clase {clase_id} el {fecha_clase}')
+            return True  # Ya se envió, no es un error
+        
+        # Generar el reporte Excel
+        output, nombre_archivo = generar_reporte_excel_clase_dia(clase_id, fecha_clase)
+        if not output:
+            app.logger.error(f'No se pudo generar el reporte para clase {clase_id}')
+            return False
+        
+        # Verificar configuración de correo
+        mail_password = app.config.get('MAIL_PASSWORD', '') or os.getenv('MAIL_PASSWORD', '')
+        mail_username = app.config.get('MAIL_USERNAME', '') or os.getenv('MAIL_USERNAME', '')
+        
+        if not mail_password or mail_password.strip() == '':
+            app.logger.warning('MAIL_PASSWORD no configurada, no se puede enviar reporte')
+            return False
+        
+        # Crear el mensaje de correo
+        año_actual = datetime.now().year
+        msg = Message(
+            subject=f'Reporte de Asistencias - {clase.nombre_clase} - {fecha_clase.strftime("%d/%m/%Y")}',
+            recipients=[profesor.email],
+            html=f'''
+            <html>
+            <body style="font-family: Arial, sans-serif;">
+                <h2>Reporte de Asistencias</h2>
+                <p>Estimado/a <strong>{profesor.nombre_completo}</strong>,</p>
+                <p>Se adjunta el reporte de asistencias de la materia <strong>{clase.nombre_clase}</strong> ({clase.codigo_clase}) correspondiente al día <strong>{fecha_clase.strftime("%d/%m/%Y")}</strong>.</p>
+                <p>El tiempo de pase de lista ha finalizado y este es el reporte automático de las asistencias registradas.</p>
+                <hr>
+                <p><small>Este es un correo automático generado por EduCheck.</small></p>
+                <p><small>&copy; {año_actual} EduCheck</small></p>
+            </body>
+            </html>
+            ''',
+            sender=app.config.get('MAIL_DEFAULT_SENDER', mail_username)
+        )
+        
+        # Adjuntar el archivo Excel
+        output.seek(0)
+        msg.attach(
+            filename=nombre_archivo,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            data=output.read()
+        )
+        
+        # Enviar el correo
+        mail.init_app(app)
+        mail.send(msg)
+        
+        # Registrar que se envió el reporte
+        reporte_enviado = ReporteEnviado(
+            clase_id=clase_id,
+            fecha_clase=fecha_clase
+        )
+        db.session.add(reporte_enviado)
+        db.session.commit()
+        
+        app.logger.info(f'Reporte enviado exitosamente a {profesor.email} para clase {clase_id} del {fecha_clase}')
+        return True
+        
+    except Exception as e:
+        app.logger.error(f'Error al enviar reporte por correo: {str(e)}')
+        db.session.rollback()
+        return False
+
+# Función que verifica y envía reportes automáticamente
+def verificar_y_enviar_reportes():
+    """Verifica qué clases han terminado su tiempo de pase de lista y envía reportes"""
+    with app.app_context():
+        try:
+            hoy = date.today()
+            ahora = datetime.now().time()
+            dia_semana_actual = hoy.weekday() + 1  # 1=Lunes, 2=Martes, etc.
+            
+            # Obtener todas las clases con horario para hoy
+            horarios_hoy = HorarioClase.query.filter_by(dia_semana=dia_semana_actual).all()
+            
+            for horario in horarios_hoy:
+                clase = horario.clase
+                
+                # Calcular hora máxima de pase de lista (5 minutos después del inicio)
+                hora_inicio_dt = datetime.combine(hoy, horario.hora_inicio)
+                hora_maxima_dt = hora_inicio_dt + timedelta(minutes=5)
+                hora_maxima = hora_maxima_dt.time()
+                
+                # Verificar si ya pasó el tiempo de pase de lista (con margen de 1 minuto)
+                # Esto permite que se ejecute hasta 1 minuto después de cerrar el pase de lista
+                hora_verificacion = (datetime.combine(hoy, ahora) + timedelta(minutes=1)).time()
+                
+                if hora_verificacion >= hora_maxima:
+                    # Verificar si ya se envió el reporte para este día
+                    reporte_existente = ReporteEnviado.query.filter_by(
+                        clase_id=clase.id,
+                        fecha_clase=hoy
+                    ).first()
+                    
+                    if not reporte_existente:
+                        # Verificar si hay asistencias registradas para esta clase hoy
+                        asistencias_hoy = Asistencia.query.filter_by(
+                            clase_id=clase.id,
+                            fecha=hoy
+                        ).count()
+                        
+                        # Solo enviar reporte si hay al menos una asistencia registrada
+                        if asistencias_hoy > 0:
+                            app.logger.info(f'Enviando reporte automático para clase {clase.id} ({clase.nombre_clase}) del {hoy} - {asistencias_hoy} asistencias registradas')
+                            enviar_reporte_por_correo(clase.id, hoy)
+                        else:
+                            app.logger.debug(f'No se envía reporte para clase {clase.id} ({clase.nombre_clase}) del {hoy} - No hay asistencias registradas')
+                    else:
+                        app.logger.debug(f'Reporte ya enviado para clase {clase.id} del {hoy}')
+                        
+        except Exception as e:
+            app.logger.error(f'Error en verificar_y_enviar_reportes: {str(e)}')
+
+# Configurar el scheduler (se inicializará al final del archivo)
+scheduler = None
 
 # Generar reporte Excel de asistencias
 @app.route('/asistencias/reporte_excel')
@@ -1287,6 +1936,115 @@ def admin_administradores():
     administradores = Usuario.query.filter_by(rol='admin').order_by(Usuario.nombre_completo).all()
     return render_template('admin_administradores.html', administradores=administradores)
 
+# Eliminar administrador (admin) - Requiere contraseña de confirmación
+@app.route('/admin/administradores/<int:admin_id>/eliminar', methods=['POST'])
+@admin_required
+def eliminar_administrador(admin_id):
+    usuario_actual = get_current_user()
+    admin_a_eliminar = Usuario.query.get_or_404(admin_id)
+    
+    # Contraseña requerida para eliminar administradores
+    PASSWORD_ELIMINAR_ADMIN = "Eliminaradm"
+    
+    # Obtener la contraseña del formulario
+    password_confirmacion = request.form.get('password_confirmacion', '').strip()
+    
+    # Verificar contraseña de confirmación
+    if password_confirmacion != PASSWORD_ELIMINAR_ADMIN:
+        flash('Contraseña de confirmación incorrecta. No se pudo eliminar el administrador.', 'danger')
+        return redirect(url_for('admin_administradores'))
+    
+    # Verificar que el usuario a eliminar sea realmente un administrador
+    if admin_a_eliminar.rol != 'admin':
+        flash('El usuario seleccionado no es un administrador', 'danger')
+        return redirect(url_for('admin_administradores'))
+    
+    # No permitir que un admin se elimine a sí mismo
+    if admin_a_eliminar.id == usuario_actual.id:
+        flash('No puedes eliminar tu propia cuenta de administrador', 'danger')
+        return redirect(url_for('admin_administradores'))
+    
+    # Verificar que no sea el último administrador
+    total_admins = Usuario.query.filter_by(rol='admin').count()
+    if total_admins <= 1:
+        flash('No se puede eliminar el último administrador. Debe haber al menos un administrador en el sistema.', 'danger')
+        return redirect(url_for('admin_administradores'))
+    
+    try:
+        nombre_admin = admin_a_eliminar.nombre_completo
+        username_admin = admin_a_eliminar.username
+        
+        # Si el admin tiene clases asignadas, se eliminarán por CASCADE
+        # Eliminar el usuario (esto también eliminará las clases por CASCADE)
+        db.session.delete(admin_a_eliminar)
+        db.session.commit()
+        
+        flash(f'Administrador {nombre_admin} ({username_admin}) eliminado exitosamente', 'success')
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Error al eliminar administrador: {str(e)}')
+        flash('Error al eliminar el administrador', 'danger')
+    
+    return redirect(url_for('admin_administradores'))
+
+# Restablecer contraseña de usuario (solo admin)
+@app.route('/admin/usuarios/<int:usuario_id>/restablecer-contraseña', methods=['GET', 'POST'])
+@admin_required
+def admin_restablecer_contraseña(usuario_id):
+    usuario_objetivo = Usuario.query.get_or_404(usuario_id)
+    usuario_actual = get_current_user()
+    
+    if request.method == 'POST':
+        nueva_password = request.form.get('nueva_password', '').strip()
+        confirmar_password = request.form.get('confirmar_password', '').strip()
+        
+        errores = []
+        
+        if not nueva_password:
+            errores.append('La nueva contraseña es obligatoria')
+        elif len(nueva_password) < 6:
+            errores.append('La contraseña debe tener al menos 6 caracteres')
+        
+        if nueva_password != confirmar_password:
+            errores.append('Las contraseñas no coinciden')
+        
+        if errores:
+            for error in errores:
+                flash(error, 'danger')
+            return render_template('admin_restablecer_contraseña.html', 
+                                 usuario_objetivo=usuario_objetivo,
+                                 usuario_actual=usuario_actual)
+        
+        try:
+            # Restablecer la contraseña
+            usuario_objetivo.set_password(nueva_password)
+            # Al restablecer la contraseña, el usuario debe cambiarla en su próximo login (aplica para todos los roles)
+            usuario_objetivo.password_changed = False
+            db.session.commit()
+            
+            flash(f'Contraseña restablecida exitosamente para {usuario_objetivo.nombre_completo} ({usuario_objetivo.username}). El usuario deberá cambiarla en su próximo inicio de sesión.', 'success')
+            
+            # Redirigir según el tipo de usuario
+            if usuario_objetivo.rol == 'admin':
+                return redirect(url_for('admin_administradores'))
+            elif usuario_objetivo.rol == 'profesor':
+                return redirect(url_for('admin_profesores'))
+            elif usuario_objetivo.rol == 'alumno':
+                return redirect(url_for('ver_estudiantes'))
+            else:
+                return redirect(url_for('dashboard'))
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f'Error al restablecer contraseña: {str(e)}')
+            flash('Error al restablecer la contraseña', 'danger')
+            return render_template('admin_restablecer_contraseña.html', 
+                                 usuario_objetivo=usuario_objetivo,
+                                 usuario_actual=usuario_actual)
+    
+    return render_template('admin_restablecer_contraseña.html', 
+                         usuario_objetivo=usuario_objetivo,
+                         usuario_actual=usuario_actual)
+
 # Crear administrador (admin)
 @app.route('/admin/administradores/nuevo', methods=['GET', 'POST'])
 @admin_required
@@ -1338,14 +2096,25 @@ def admin_nuevo_administrador():
             username=username,
             email=email,
             nombre_completo=nombre_completo,
-            rol='admin'
+            rol='admin',
+            password_changed=False  # Debe cambiar la contraseña en el primer login
         )
         nuevo_admin.set_password(password)
         
         db.session.add(nuevo_admin)
         db.session.commit()
         
-        flash(f'Administrador {nombre_completo} creado exitosamente', 'success')
+        # Enviar correo de bienvenida
+        try:
+            enviado, mensaje = enviar_correo_bienvenida(nuevo_admin, password)
+            if enviado:
+                flash(f'Administrador {nombre_completo} creado exitosamente. Se envió correo de bienvenida.', 'success')
+            else:
+                flash(f'Administrador {nombre_completo} creado exitosamente, pero hubo un problema al enviar el correo: {mensaje}', 'warning')
+        except Exception as e:
+            app.logger.error(f'Error al enviar correo de bienvenida: {str(e)}')
+            flash(f'Administrador {nombre_completo} creado exitosamente, pero hubo un problema al enviar el correo.', 'warning')
+        
         return redirect(url_for('admin_administradores'))
     
     return render_template('admin_nuevo_administrador.html')
@@ -1408,14 +2177,25 @@ def admin_nuevo_profesor():
             username=username,
             email=email,
             nombre_completo=nombre_completo,
-            rol='profesor'
+            rol='profesor',
+            password_changed=False  # Debe cambiar la contraseña en el primer login
         )
         nuevo_profesor.set_password(password)
         
         db.session.add(nuevo_profesor)
         db.session.commit()
         
-        flash(f'Profesor {nombre_completo} creado exitosamente', 'success')
+        # Enviar correo de bienvenida
+        try:
+            enviado, mensaje = enviar_correo_bienvenida(nuevo_profesor, password)
+            if enviado:
+                flash(f'Profesor {nombre_completo} creado exitosamente. Se envió correo de bienvenida.', 'success')
+            else:
+                flash(f'Profesor {nombre_completo} creado exitosamente, pero hubo un problema al enviar el correo: {mensaje}', 'warning')
+        except Exception as e:
+            app.logger.error(f'Error al enviar correo de bienvenida: {str(e)}')
+            flash(f'Profesor {nombre_completo} creado exitosamente, pero hubo un problema al enviar el correo.', 'warning')
+        
         return redirect(url_for('admin_profesores'))
     
     return render_template('admin_nuevo_profesor.html')
@@ -1469,6 +2249,88 @@ def reasignar_materia(clase_id):
             flash('Error al reasignar la materia', 'danger')
     
     return render_template('reasignar_materia.html', clase=clase, profesores=profesores)
+
+# Editar horarios de una materia (admin)
+@app.route('/admin/materia/<int:clase_id>/horarios', methods=['GET', 'POST'])
+@admin_required
+def editar_horarios(clase_id):
+    clase = Clase.query.get_or_404(clase_id)
+    
+    if request.method == 'POST':
+        # Obtener horarios actuales
+        horarios_actuales = {h.dia_semana: h for h in clase.horarios.all()}
+        
+        # Procesar horarios del formulario
+        horarios_data = []
+        dias_semana = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes']
+        dias_numeros = {'lunes': 1, 'martes': 2, 'miercoles': 3, 'jueves': 4, 'viernes': 5}
+        
+        errores = []
+        
+        for dia in dias_semana:
+            dia_seleccionado = request.form.get(f'horario_{dia}_activo', '') == 'on'
+            dia_numero = dias_numeros[dia]
+            
+            if dia_seleccionado:
+                hora_inicio_str = request.form.get(f'horario_{dia}_inicio', '').strip()
+                hora_fin_str = request.form.get(f'horario_{dia}_fin', '').strip()
+                
+                if not hora_inicio_str or not hora_fin_str:
+                    errores.append(f'Debe especificar hora de inicio y fin para {dia.capitalize()}')
+                else:
+                    try:
+                        hora_inicio = datetime.strptime(hora_inicio_str, '%H:%M').time()
+                        hora_fin = datetime.strptime(hora_fin_str, '%H:%M').time()
+                        
+                        if hora_fin <= hora_inicio:
+                            errores.append(f'La hora de fin debe ser mayor que la hora de inicio para {dia.capitalize()}')
+                        else:
+                            horarios_data.append({
+                                'dia': dia_numero,
+                                'hora_inicio': hora_inicio,
+                                'hora_fin': hora_fin
+                            })
+                    except ValueError:
+                        errores.append(f'Formato de hora inválido para {dia.capitalize()}. Use formato HH:MM')
+            else:
+                # Si no está seleccionado, eliminar el horario si existe
+                if dia_numero in horarios_actuales:
+                    db.session.delete(horarios_actuales[dia_numero])
+        
+        if not horarios_data:
+            errores.append('Debe seleccionar al menos un día de la semana con su horario')
+        
+        if errores:
+            for error in errores:
+                flash(error, 'danger')
+            # Recargar horarios para mostrar en el formulario
+            horarios_actuales = {h.dia_semana: h for h in clase.horarios.all()}
+            return render_template('editar_horarios.html', clase=clase, horarios_actuales=horarios_actuales)
+        
+        # Actualizar o crear horarios
+        for horario_data in horarios_data:
+            if horario_data['dia'] in horarios_actuales:
+                # Actualizar horario existente
+                horario = horarios_actuales[horario_data['dia']]
+                horario.hora_inicio = horario_data['hora_inicio']
+                horario.hora_fin = horario_data['hora_fin']
+            else:
+                # Crear nuevo horario
+                horario = HorarioClase(
+                    clase_id=clase.id,
+                    dia_semana=horario_data['dia'],
+                    hora_inicio=horario_data['hora_inicio'],
+                    hora_fin=horario_data['hora_fin']
+                )
+                db.session.add(horario)
+        
+        db.session.commit()
+        flash('Horarios actualizados exitosamente', 'success')
+        return redirect(url_for('detalle_materia', clase_id=clase_id))
+    
+    # GET: Mostrar formulario con horarios actuales
+    horarios_actuales = {h.dia_semana: h for h in clase.horarios.all()}
+    return render_template('editar_horarios.html', clase=clase, horarios_actuales=horarios_actuales)
 
 # ---------------------
 # RUTA TEMPORAL PARA CREAR PRIMER ADMIN
@@ -1577,32 +2439,59 @@ if __name__ == '__main__':
     
     use_https = os.path.exists(cert_file) and os.path.exists(key_file)
     
+    # Evitar ejecución duplicada cuando Flask usa el reloader
+    # Solo mostrar mensajes e inicializar scheduler en el proceso hijo
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        if use_https:
+            # Obtener IP local para mostrar en el mensaje
+            import socket
+            hostname = socket.gethostname()
+            try:
+                local_ip = socket.gethostbyname(hostname)
+            except:
+                local_ip = "192.168.100.34"
+            
+            print("=" * 60)
+            print("Iniciando servidor Flask con HTTPS")
+            print("=" * 60)
+            print(f"\nURLs de acceso:")
+            print(f"  Desde tu computadora: https://localhost:5000")
+            print(f"  Desde iPhone/otros dispositivos: https://{local_ip}:5000")
+            print("=" * 60)
+            print("\n[!] IMPORTANTE para iPhone:")
+            print("   1. Asegurate de que iPhone y computadora esten en la misma red WiFi")
+            print("   2. Usa Safari (no Chrome) en iPhone")
+            print("   3. Escribe: https://" + local_ip + ":5000")
+            print("   4. Safari mostrara advertencia - toca 'Avanzado' > 'Continuar'")
+            print("=" * 60)
+            print("\nServidor iniciando...")
+            print("Presiona CTRL+C para detener")
+            print("=" * 60)
+        else:
+            print("=" * 60)
+            print("⚠️  Iniciando servidor Flask sin HTTPS")
+            print("=" * 60)
+            print("📱 Para usar en iPhone, necesitas HTTPS.")
+            print("   Ejecuta: python generar_certificados.py")
+            print("   Luego reinicia el servidor.")
+            print("=" * 60)
+        
+        # Inicializar el scheduler antes de iniciar el servidor (solo en proceso hijo)
+        if scheduler is None:
+            scheduler = BackgroundScheduler()
+            scheduler.add_job(
+                func=verificar_y_enviar_reportes,
+                trigger=CronTrigger(minute='*'),  # Ejecutar cada minuto
+                id='verificar_reportes',
+                name='Verificar y enviar reportes de asistencia',
+                replace_existing=True
+            )
+            scheduler.start()
+            atexit.register(lambda: scheduler.shutdown() if scheduler else None)
+            print("✅ Scheduler de reportes automáticos iniciado")
+    
+    # Ejecutar el servidor siempre (tanto en proceso padre como hijo)
     if use_https:
-        # Obtener IP local para mostrar en el mensaje
-        import socket
-        hostname = socket.gethostname()
-        try:
-            local_ip = socket.gethostbyname(hostname)
-        except:
-            local_ip = "192.168.100.34"
-        
-        print("=" * 60)
-        print("Iniciando servidor Flask con HTTPS")
-        print("=" * 60)
-        print(f"\nURLs de acceso:")
-        print(f"  Desde tu computadora: https://localhost:5000")
-        print(f"  Desde iPhone/otros dispositivos: https://{local_ip}:5000")
-        print("=" * 60)
-        print("\n[!] IMPORTANTE para iPhone:")
-        print("   1. Asegurate de que iPhone y computadora esten en la misma red WiFi")
-        print("   2. Usa Safari (no Chrome) en iPhone")
-        print("   3. Escribe: https://" + local_ip + ":5000")
-        print("   4. Safari mostrara advertencia - toca 'Avanzado' > 'Continuar'")
-        print("=" * 60)
-        print("\nServidor iniciando...")
-        print("Presiona CTRL+C para detener")
-        print("=" * 60)
-        
         try:
             app.run(
                 host='0.0.0.0', 
@@ -1619,11 +2508,4 @@ if __name__ == '__main__':
                 print(f"\n[!] ERROR al iniciar el servidor: {e}")
                 raise
     else:
-        print("=" * 60)
-        print("⚠️  Iniciando servidor Flask sin HTTPS")
-        print("=" * 60)
-        print("📱 Para usar en iPhone, necesitas HTTPS.")
-        print("   Ejecuta: python generar_certificados.py")
-        print("   Luego reinicia el servidor.")
-        print("=" * 60)
         app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=True)

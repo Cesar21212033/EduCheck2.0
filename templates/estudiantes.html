@@ -13,6 +13,13 @@
           <a class="btn btn-sm btn-outline-primary" href="{{ url_for('detalle_estudiante', estudiante_id=e.id) }}">
             Detalles / QR
           </a>
+          {% if usuario.rol == 'admin' and e.usuario_id %}
+          <a href="{{ url_for('admin_restablecer_contraseña', usuario_id=e.usuario_id) }}" 
+             class="btn btn-sm btn-outline-warning" 
+             title="Restablecer contraseña">
+            <i class="bi bi-key"></i> Restablecer Contraseña
+          </a>
+          {% endif %}
           <form method="post" action="{{ url_for('eliminar_estudiante', estudiante_id=e.id) }}" 
                 class="d-inline" 
                 onsubmit="return confirm('¿Estás seguro de eliminar al estudiante {{ e.nombre }} ({{ e.numero_control }})? Esta acción no se puede deshacer.');">

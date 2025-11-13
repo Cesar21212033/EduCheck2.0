@@ -11,7 +11,7 @@ CREATE TABLE usuarios (
   activo BOOLEAN DEFAULT TRUE,
   creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-select * from estudiantes;
+select * from usuarios;
 
 CREATE TABLE estudiantes (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -59,7 +59,6 @@ CREATE TABLE asistencias (
   FOREIGN KEY (clase_id) REFERENCES clases(id) ON DELETE CASCADE,
   UNIQUE KEY unica_asistencia_por_dia (estudiante_id, clase_id, fecha)
 );
--- ✅ Script para agregar campo de rol y usuario_id a estudiantes (compatible con MySQL)
 
 -- Agregar campo 'rol' a la tabla 'usuarios' si no existe
 -- Agregar columna 'rol' a la tabla 'usuarios' (solo ejecutar una vez)
@@ -93,11 +92,8 @@ CREATE INDEX idx_usuarios_rol ON usuarios(rol);
 
 -- ================================================
 -- Script para crear un usuario administrador
--- Compatible con MySQL Workbench
 -- ================================================
 
--- 🔹 Crear un nuevo usuario administrador
--- ⚠️ Reemplaza el valor del hash por uno real (ver instrucciones abajo)
 INSERT INTO usuarios (username, email, password_hash, nombre_completo, rol, activo, creado_en)
 VALUES (
     'admin',
@@ -109,10 +105,7 @@ VALUES (
     NOW()
 );
 
--- ================================================
--- Si deseas convertir un usuario existente en admin:
--- Reemplaza 'nombre_usuario' con el nombre de usuario correcto
--- ================================================
+
 -- UPDATE usuarios SET rol = 'admin' WHERE username = 'nombre_usuario';
 
 
@@ -197,4 +190,49 @@ PREPARE stmt_index FROM @sql_index;
 EXECUTE stmt_index;
 DEALLOCATE PREPARE stmt_index;
 
+
+-- ================================================
+-- Script para crear tabla de horarios de clases
+-- ================================================
+
+-- Crear tabla de horarios de clases
+CREATE TABLE IF NOT EXISTS horarios_clase (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  clase_id INT NOT NULL,
+  dia_semana TINYINT NOT NULL COMMENT '1=Lunes, 2=Martes, 3=Miércoles, 4=Jueves, 5=Viernes',
+  hora_inicio TIME NOT NULL,
+  hora_fin TIME NOT NULL,
+  creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (clase_id) REFERENCES clases(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_clase_dia (clase_id, dia_semana),
+  INDEX idx_clase_id (clase_id),
+  INDEX idx_dia_semana (dia_semana),
+  CHECK (dia_semana BETWEEN 1 AND 5),
+  CHECK (hora_fin > hora_inicio)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Verificar que la tabla se creó correctamente
+SELECT 'Tabla horarios_clase creada exitosamente' AS mensaje;
+
+
+select * from usuarios;
+
+-- ================================================
+-- Script para crear tabla de reportes enviados
+-- ================================================
+
+-- Crear tabla para rastrear reportes enviados por correo
+CREATE TABLE IF NOT EXISTS reportes_enviados (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  clase_id INT NOT NULL,
+  fecha_clase DATE NOT NULL,
+  enviado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (clase_id) REFERENCES clases(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_reporte_dia (clase_id, fecha_clase),
+  INDEX idx_clase_id (clase_id),
+  INDEX idx_fecha_clase (fecha_clase)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Verificar que la tabla se creó correctamente
+SELECT 'Tabla reportes_enviados creada exitosamente' AS mensaje;
 

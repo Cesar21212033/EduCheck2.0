@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Restablecer Contraseña{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header bg-warning">
+        <h4 class="mb-0">Restablecer Contraseña</h4>
+      </div>
+      <div class="card-body">
+        <div class="alert alert-info">
+          <strong>Usuario:</strong> {{ usuario_objetivo.nombre_completo }}<br>
+          <strong>Username:</strong> {{ usuario_objetivo.username }}<br>
+          <strong>Correo:</strong> {{ usuario_objetivo.email }}<br>
+          <strong>Rol:</strong> 
+          {% if usuario_objetivo.rol == 'admin' %}
+            <span class="badge bg-danger">Administrador</span>
+          {% elif usuario_objetivo.rol == 'profesor' %}
+            <span class="badge bg-primary">Profesor</span>
+          {% elif usuario_objetivo.rol == 'alumno' %}
+            <span class="badge bg-success">Alumno</span>
+          {% endif %}
+        </div>
+        
+        <form method="post" id="formRestablecer" novalidate>
+          <div class="mb-3">
+            <label for="nueva_password" class="form-label">Nueva Contraseña <span class="text-danger">*</span></label>
+            <input 
+              type="password" 
+              class="form-control" 
+              id="nueva_password" 
+              name="nueva_password" 
+              required 
+              minlength="6"
+              placeholder="Mínimo 6 caracteres"
+            />
+            <div class="invalid-feedback">
+              La contraseña debe tener al menos 6 caracteres
+            </div>
+            <small class="form-text text-muted">Mínimo 6 caracteres</small>
+          </div>
+          
+          <div class="mb-3">
+            <label for="confirmar_password" class="form-label">Confirmar Nueva Contraseña <span class="text-danger">*</span></label>
+            <input 
+              type="password" 
+              class="form-control" 
+              id="confirmar_password" 
+              name="confirmar_password" 
+              required 
+              minlength="6"
+              placeholder="Repita la nueva contraseña"
+            />
+            <div class="invalid-feedback">
+              Las contraseñas deben coincidir
+            </div>
+          </div>
+          
+          <div class="alert alert-warning">
+            <strong> Advertencia:</strong> Esta acción cambiará la contraseña del usuario. El usuario deberá usar esta nueva contraseña para iniciar sesión.
+          </div>
+          
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-warning">Restablecer Contraseña</button>
+            {% if usuario_objetivo.rol == 'admin' %}
+              <a href="{{ url_for('admin_administradores') }}" class="btn btn-secondary">Cancelar</a>
+            {% elif usuario_objetivo.rol == 'profesor' %}
+              <a href="{{ url_for('admin_profesores') }}" class="btn btn-secondary">Cancelar</a>
+            {% elif usuario_objetivo.rol == 'alumno' %}
+              <a href="{{ url_for('ver_estudiantes') }}" class="btn btn-secondary">Cancelar</a>
+            {% else %}
+              <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Cancelar</a>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+  const form = document.getElementById('formRestablecer');
+  const nuevaPasswordInput = document.getElementById('nueva_password');
+  const confirmarPasswordInput = document.getElementById('confirmar_password');
+  
+  // Validar que las contraseñas coincidan
+  function validarContrasenas() {
+    if (nuevaPasswordInput.value !== confirmarPasswordInput.value) {
+      confirmarPasswordInput.setCustomValidity('Las contraseñas no coinciden');
+    } else {
+      confirmarPasswordInput.setCustomValidity('');
+    }
+  }
+  
+  nuevaPasswordInput.addEventListener('input', validarContrasenas);
+  confirmarPasswordInput.addEventListener('input', validarContrasenas);
+  
+  form.addEventListener('submit', function(event) {
+    // Validar contraseñas antes de enviar
+    if (nuevaPasswordInput.value !== confirmarPasswordInput.value) {
+      confirmarPasswordInput.setCustomValidity('Las contraseñas no coinciden');
+      event.preventDefault();
+      event.stopPropagation();
+      form.classList.add('was-validated');
+      return false;
+    }
+    
+    if (!form.checkValidity()) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    form.classList.add('was-validated');
+  }, false);
+})();
+</script>
+{% endblock %}
+

@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}Editar Horarios - {{ clase.nombre_clase }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-10">
+    <div class="card">
+      <div class="card-header bg-info text-white">
+        <h4 class="mb-0"><i class="bi bi-clock"></i> Editar Horarios - {{ clase.nombre_clase }}</h4>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <strong>Materia:</strong> {{ clase.nombre_clase }}<br>
+          <strong>Código:</strong> {{ clase.codigo_clase }}
+        </div>
+        
+        <!-- Mostrar horarios actuales -->
+        {% if horarios_actuales %}
+        <div class="alert alert-info mb-4">
+          <h6 class="mb-2"><i class="bi bi-info-circle"></i> Horarios Actuales:</h6>
+          <div class="row">
+            {% set dias_nombres = {1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes'} %}
+            {% for dia_num, horario in horarios_actuales.items() %}
+            <div class="col-md-6 mb-1">
+              <strong>{{ dias_nombres[dia_num] }}:</strong> 
+              {{ horario.hora_inicio.strftime('%H:%M') }} - {{ horario.hora_fin.strftime('%H:%M') }}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% else %}
+        <div class="alert alert-warning mb-4">
+          <i class="bi bi-exclamation-triangle"></i> Esta materia no tiene horarios configurados. Configure los horarios a continuación.
+        </div>
+        {% endif %}
+        
+        <form method="post" id="formHorarios" novalidate>
+          <!-- Sección de Horarios -->
+          <div class="mb-4">
+            <label class="form-label fw-bold">Horarios de la Materia <span class="text-danger">*</span></label>
+            <small class="form-text text-muted d-block mb-3">Seleccione los días de la semana en que se imparte la materia y especifique el horario para cada día.</small>
+            
+            <div class="card">
+              <div class="card-body">
+                {% set dias = [
+                  {'nombre': 'lunes', 'label': 'Lunes', 'numero': 1},
+                  {'nombre': 'martes', 'label': 'Martes', 'numero': 2},
+                  {'nombre': 'miercoles', 'label': 'Miércoles', 'numero': 3},
+                  {'nombre': 'jueves', 'label': 'Jueves', 'numero': 4},
+                  {'nombre': 'viernes', 'label': 'Viernes', 'numero': 5}
+                ] %}
+                
+                {% for dia in dias %}
+                {% set horario_actual = horarios_actuales.get(dia.numero) %}
+                <div class="row mb-3 align-items-center horario-dia-row" data-dia="{{ dia.nombre }}">
+                  <div class="col-md-2">
+                    <div class="form-check">
+                      <input 
+                        class="form-check-input horario-checkbox" 
+                        type="checkbox" 
+                        id="horario_{{ dia.nombre }}_activo" 
+                        name="horario_{{ dia.nombre }}_activo"
+                        {% if horario_actual %}checked{% endif %}
+                        onchange="toggleHorarioDia('{{ dia.nombre }}')"
+                      />
+                      <label class="form-check-label fw-bold" for="horario_{{ dia.nombre }}_activo">
+                        {{ dia.label }}
+                      </label>
+                    </div>
+                  </div>
+                  <div class="col-md-5 horario-campos" style="display: {% if horario_actual %}block{% else %}none{% endif %};">
+                    <label for="horario_{{ dia.nombre }}_inicio" class="form-label small">Hora Inicio</label>
+                    <input 
+                      type="time" 
+                      class="form-control form-control-sm" 
+                      id="horario_{{ dia.nombre }}_inicio" 
+                      name="horario_{{ dia.nombre }}_inicio"
+                      {% if horario_actual %}
+                      value="{{ horario_actual.hora_inicio.strftime('%H:%M') }}"
+                      {% endif %}
+                      onchange="validarHorario('{{ dia.nombre }}')"
+                    />
+                  </div>
+                  <div class="col-md-5 horario-campos" style="display: {% if horario_actual %}block{% else %}none{% endif %};">
+                    <label for="horario_{{ dia.nombre }}_fin" class="form-label small">Hora Fin</label>
+                    <input 
+                      type="time" 
+                      class="form-control form-control-sm" 
+                      id="horario_{{ dia.nombre }}_fin" 
+                      name="horario_{{ dia.nombre }}_fin"
+                      {% if horario_actual %}
+                      value="{{ horario_actual.hora_fin.strftime('%H:%M') }}"
+                      {% endif %}
+                      onchange="validarHorario('{{ dia.nombre }}')"
+                    />
+                  </div>
+                </div>
+                {% endfor %}
+                
+                <div id="horario-error" class="text-danger small" style="display: none;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+            <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+            <a href="{{ url_for('detalle_materia', clase_id=clase.id) }}" class="btn btn-secondary">Cancelar</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    'use strict';
+    const form = document.getElementById('formHorarios');
+    
+    // Función para mostrar/ocultar campos de horario según el checkbox
+    window.toggleHorarioDia = function(dia) {
+      const checkbox = document.getElementById(`horario_${dia}_activo`);
+      const campos = document.querySelectorAll(`[data-dia="${dia}"] .horario-campos`);
+      const inicioInput = document.getElementById(`horario_${dia}_inicio`);
+      const finInput = document.getElementById(`horario_${dia}_fin`);
+      
+      if (checkbox.checked) {
+        campos.forEach(campo => campo.style.display = 'block');
+        inicioInput.required = true;
+        finInput.required = true;
+      } else {
+        campos.forEach(campo => campo.style.display = 'none');
+        inicioInput.required = false;
+        finInput.required = false;
+        inicioInput.value = '';
+        finInput.value = '';
+      }
+      validarHorarios();
+    };
+
+    // Función para validar que la hora fin sea mayor que la hora inicio
+    window.validarHorario = function(dia) {
+      const inicioInput = document.getElementById(`horario_${dia}_inicio`);
+      const finInput = document.getElementById(`horario_${dia}_fin`);
+      const errorDiv = document.getElementById('horario-error');
+      
+      if (inicioInput.value && finInput.value) {
+        const inicio = inicioInput.value;
+        const fin = finInput.value;
+        
+        if (fin <= inicio) {
+          inicioInput.setCustomValidity('La hora de fin debe ser mayor que la hora de inicio');
+          finInput.setCustomValidity('La hora de fin debe ser mayor que la hora de inicio');
+          errorDiv.textContent = `Error en ${dia}: La hora de fin debe ser mayor que la hora de inicio`;
+          errorDiv.style.display = 'block';
+          return false;
+        } else {
+          inicioInput.setCustomValidity('');
+          finInput.setCustomValidity('');
+          validarHorarios();
+          return true;
+        }
+      }
+      return true;
+    };
+
+    // Función para validar que al menos un día tenga horario configurado
+    function validarHorarios() {
+      const checkboxes = document.querySelectorAll('.horario-checkbox:checked');
+      const errorDiv = document.getElementById('horario-error');
+      
+      if (checkboxes.length === 0) {
+        errorDiv.textContent = 'Debe seleccionar al menos un día de la semana con su horario';
+        errorDiv.style.display = 'block';
+        return false;
+      }
+      
+      // Validar que cada día seleccionado tenga horas completas
+      let todosValidos = true;
+      checkboxes.forEach(checkbox => {
+        const dia = checkbox.id.replace('horario_', '').replace('_activo', '');
+        const inicioInput = document.getElementById(`horario_${dia}_inicio`);
+        const finInput = document.getElementById(`horario_${dia}_fin`);
+        
+        if (!inicioInput.value || !finInput.value) {
+          todosValidos = false;
+          errorDiv.textContent = `Debe especificar hora de inicio y fin para todos los días seleccionados`;
+          errorDiv.style.display = 'block';
+        } else if (!validarHorario(dia)) {
+          todosValidos = false;
+        }
+      });
+      
+      if (todosValidos && checkboxes.length > 0) {
+        errorDiv.style.display = 'none';
+      }
+      
+      return todosValidos;
+    }
+
+    // Inicializar campos requeridos y visibilidad para días ya seleccionados
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.horario-checkbox:checked').forEach(checkbox => {
+        const dia = checkbox.id.replace('horario_', '').replace('_activo', '');
+        const inicioInput = document.getElementById(`horario_${dia}_inicio`);
+        const finInput = document.getElementById(`horario_${dia}_fin`);
+        const campos = document.querySelectorAll(`[data-dia="${dia}"] .horario-campos`);
+        
+        if (inicioInput && finInput) {
+          inicioInput.required = true;
+          finInput.required = true;
+          // Asegurar que los campos estén visibles
+          campos.forEach(campo => campo.style.display = 'block');
+        }
+      });
+    });
+
+    form.addEventListener('submit', function(event) {
+      // Validar horarios antes de enviar
+      if (!validarHorarios()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      
+      if (!form.checkValidity()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      form.classList.add('was-validated');
+    }, false);
+  })();
+</script>
+{% endblock %}
+

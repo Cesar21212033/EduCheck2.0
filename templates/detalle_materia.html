@@ -7,10 +7,74 @@
     <p class="text-muted mb-0">Código: {{ clase.codigo_clase }}</p>
   </div>
   <div>
-    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#scannerModal">
+    {% if session.get('rol') == 'admin' %}
+    <a href="{{ url_for('editar_horarios', clase_id=clase.id) }}" class="btn btn-outline-info">
+      <i class="bi bi-clock"></i> Editar Horarios
+    </a>
+    {% endif %}
+    <button 
+      type="button" 
+      class="btn btn-success" 
+      id="btnEscanearQR"
+      data-bs-toggle="modal" 
+      data-bs-target="#scannerModal"
+      {% if not puede_registrar %}disabled title="{{ motivo_bloqueo }}"{% endif %}
+    >
       <i class="bi bi-qr-code-scan"></i> Escanear QR
     </button>
+    {% if not puede_registrar %}
+    <small class="d-block text-danger mt-1" style="font-size: 0.85em;">
+      <i class="bi bi-exclamation-circle"></i> {{ motivo_bloqueo }}
+    </small>
+    {% endif %}
     <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Volver</a>
+  </div>
+</div>
+
+<!-- Mostrar horarios de la materia -->
+<div class="card mb-3">
+  <div class="card-header {% if horarios %}bg-info{% else %}bg-warning{% endif %} text-white">
+    <h5 class="mb-0"><i class="bi bi-clock"></i> Horarios de la Materia</h5>
+  </div>
+  <div class="card-body">
+    {% if horarios %}
+    <div class="row">
+      {% set dias_nombres = {1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes'} %}
+      {% for horario in horarios %}
+      <div class="col-md-6 mb-2">
+        <strong><i class="bi bi-calendar-day"></i> {{ dias_nombres[horario.dia_semana] }}:</strong> 
+        <span class="badge bg-primary">{{ horario.hora_inicio.strftime('%H:%M') }} - {{ horario.hora_fin.strftime('%H:%M') }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% if horario_hoy %}
+    <hr>
+    <div class="alert alert-success mb-0">
+      <i class="bi bi-info-circle"></i> <strong>Horario de clase:</strong> 
+      {{ horario_hoy.hora_inicio.strftime('%H:%M') }} - {{ horario_hoy.hora_fin.strftime('%H:%M') }}
+      <br>
+      <i class="bi bi-clock-history"></i> <strong>Pase de lista:</strong> 
+      {% if hora_minima_pase and hora_maxima_pase %}
+      {{ hora_minima_pase.strftime('%H:%M') }} - {{ hora_maxima_pase.strftime('%H:%M') }}
+      {% else %}
+      {{ horario_hoy.hora_inicio.strftime('%H:%M') }} - {{ horario_hoy.hora_fin.strftime('%H:%M') }}
+      {% endif %}
+      <small class="text-muted d-block mt-1">El pase de lista está disponible desde 15 minutos antes del inicio hasta 5 minutos después del inicio de clase.</small>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="alert alert-warning mb-0">
+      <i class="bi bi-exclamation-triangle"></i> <strong>No hay horarios asignados</strong>
+      <p class="mb-0 mt-2">
+        Esta materia no tiene horarios configurados. 
+        {% if session.get('rol') == 'admin' %}
+        <a href="{{ url_for('editar_horarios', clase_id=clase.id) }}" class="alert-link">Configurar horarios</a> para poder registrar asistencias.
+        {% else %}
+        Contacte al administrador para configurar los horarios de esta materia.
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
   </div>
 </div>
 
@@ -45,6 +109,7 @@
   </div>
   
   <div class="col-md-6">
+    {% if session.get('rol') == 'admin' %}
     <div class="card mb-3">
       <div class="card-header bg-success text-white">
         <h5 class="mb-0">Asignar Estudiante</h5>
@@ -69,7 +134,9 @@
         {% endif %}
       </div>
     </div>
+    {% endif %}
     
+    {% if session.get('rol') == 'admin' %}
     <div class="card">
       <div class="card-header bg-danger text-white">
         <h5 class="mb-0">Zona de Peligro</h5>
@@ -81,6 +148,7 @@
         </form>
       </div>
     </div>
+    {% endif %}
   </div>
 </div>
 
@@ -95,6 +163,28 @@
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
+        <!-- Información del horario actual -->
+        {% set dias_nombres = {1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes'} %}
+        {% if horario_hoy %}
+        <div class="alert alert-success mb-3">
+          <i class="bi bi-clock"></i> <strong>Horario de clase ({{ dias_nombres[horario_hoy.dia_semana] }}):</strong> 
+          {{ horario_hoy.hora_inicio.strftime('%H:%M') }} - {{ horario_hoy.hora_fin.strftime('%H:%M') }}
+          <br>
+          <i class="bi bi-clock-history"></i> <strong>Pase de lista:</strong> 
+          {% if hora_minima_pase and hora_maxima_pase %}
+          {{ hora_minima_pase.strftime('%H:%M') }} - {{ hora_maxima_pase.strftime('%H:%M') }}
+          {% else %}
+          {{ horario_hoy.hora_inicio.strftime('%H:%M') }} - {{ horario_hoy.hora_fin.strftime('%H:%M') }}
+          {% endif %}
+          <br><small class="text-muted">El pase de lista está disponible desde 15 minutos antes del inicio hasta 5 minutos después del inicio de clase.</small>
+        </div>
+        {% else %}
+        <div class="alert alert-warning mb-3">
+          <i class="bi bi-exclamation-triangle"></i> <strong>Advertencia:</strong> 
+          No hay clase programada para hoy ({{ dias_nombres.get(dia_semana_actual, 'este día') }}). Solo se pueden registrar asistencias en los días y horarios configurados.
+        </div>
+        {% endif %}
+        
         <div class="alert alert-info mb-3">
           <i class="bi bi-info-circle"></i> <strong>Instrucciones:</strong> Apunta la cámara del dispositivo al QR del estudiante para registrar su asistencia.
         </div>
@@ -109,8 +199,16 @@
           </div>
         </div>
         <script type="application/json" id="clase-data">{{ {'id': clase.id}|tojson }}</script>
-        <div id="scanner-resultado" class="mt-3"></div>
-        <div id="scanner-estado" class="mt-2 text-center text-muted"></div>
+        <script type="application/json" id="horario-data">{{ {
+          'tieneHorario': horario_hoy is not none,
+          'horarioInicio': horario_hoy.hora_inicio.strftime('%H:%M') if horario_hoy else None,
+          'horarioFin': horario_hoy.hora_fin.strftime('%H:%M') if horario_hoy else None,
+          'horaMinimaPase': hora_minima_pase.strftime('%H:%M') if hora_minima_pase else None,
+          'horaMaximaPase': hora_maxima_pase.strftime('%H:%M') if hora_maxima_pase else None,
+          'puedeRegistrar': puede_registrar
+        }|tojson }}</script>
+        <div id="scanner-resultado" class="mt-3" style="min-height: 80px;"></div>
+        <div id="scanner-estado" class="mt-2 text-center text-muted fw-bold"></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="cerrarScanner">Cerrar</button>
@@ -120,6 +218,105 @@
 </div>
 
 <script>
+  // Validación de horario para el botón de escanear QR
+  (function() {
+    const btnEscanearQR = document.getElementById('btnEscanearQR');
+    const scannerModal = document.getElementById('scannerModal');
+    
+    // Datos del horario desde el servidor (cargados desde JSON)
+    let horarioData = {
+      tieneHorario: false,
+      horarioInicio: null,
+      horarioFin: null,
+      puedeRegistrar: false
+    };
+    
+    // Cargar datos del horario desde el elemento JSON
+    const horarioDataEl = document.getElementById('horario-data');
+    if (horarioDataEl) {
+      try {
+        horarioData = JSON.parse(horarioDataEl.textContent);
+      } catch (e) {
+        console.error('Error al parsear datos de horario:', e);
+      }
+    }
+    
+    function verificarHorario() {
+      if (!horarioData.tieneHorario) {
+        return false;
+      }
+      
+      // Validar usando el rango de pase de lista: 15 min antes hasta 5 min después del inicio
+      if (!horarioData.horaMinimaPase || !horarioData.horaMaximaPase) {
+        return false;
+      }
+      
+      const ahora = new Date();
+      const horas = ahora.getHours().toString().padStart(2, '0');
+      const minutos = ahora.getMinutes().toString().padStart(2, '0');
+      const horaActual = horas + ':' + minutos;
+      
+      return horaActual >= horarioData.horaMinimaPase && horaActual <= horarioData.horaMaximaPase;
+    }
+    
+    function obtenerMotivoBloqueo() {
+      if (!horarioData.tieneHorario) {
+        return 'No hay clase programada para hoy';
+      }
+      
+      if (!horarioData.horaMinimaPase || !horarioData.horaMaximaPase) {
+        return 'No hay horario de pase de lista configurado';
+      }
+      
+      const ahora = new Date();
+      const horas = ahora.getHours().toString().padStart(2, '0');
+      const minutos = ahora.getMinutes().toString().padStart(2, '0');
+      const horaActual = horas + ':' + minutos;
+      
+      if (horaActual < horarioData.horaMinimaPase) {
+        return 'El pase de lista está disponible desde las ' + horarioData.horaMinimaPase + ' (15 min antes del inicio)';
+      } else if (horaActual > horarioData.horaMaximaPase) {
+        return 'El pase de lista cerró a las ' + horarioData.horaMaximaPase + ' (5 min después del inicio)';
+      }
+      return '';
+    }
+    
+    function actualizarEstadoBoton() {
+      if (!btnEscanearQR) return;
+      
+      const puedeRegistrar = verificarHorario();
+      
+      if (!puedeRegistrar) {
+        btnEscanearQR.disabled = true;
+        btnEscanearQR.classList.add('disabled');
+        btnEscanearQR.title = obtenerMotivoBloqueo();
+      } else {
+        btnEscanearQR.disabled = false;
+        btnEscanearQR.classList.remove('disabled');
+        btnEscanearQR.title = '';
+      }
+    }
+    
+    // Prevenir que el modal se abra si está fuera del horario
+    if (scannerModal && btnEscanearQR) {
+      scannerModal.addEventListener('show.bs.modal', function(event) {
+        if (!verificarHorario()) {
+          event.preventDefault();
+          event.stopPropagation();
+          const motivo = obtenerMotivoBloqueo();
+          alert('No se puede escanear QR fuera del horario de clase.\n\n' + motivo);
+          return false;
+        }
+      });
+    }
+    
+    // Verificar el horario cada minuto si hay horario configurado
+    if (horarioData.tieneHorario) {
+      actualizarEstadoBoton();
+      setInterval(actualizarEstadoBoton, 60000); // Cada minuto
+    }
+  })();
+  
   // Cargar la librería html5-qrcode primero con múltiples CDNs como fallback
   (function() {
     // Verificar si ya está cargado
@@ -241,76 +438,212 @@
     }
 
     function registrarEnServidor(payload) {
-      if (escaneando) return;
+      if (escaneando) {
+        console.log('Ya hay un registro en proceso, ignorando...');
+        return;
+      }
       escaneando = true;
       
+      console.log('Registrando asistencia con payload:', payload);
       mostrarEstado('Registrando asistencia...', 'info');
+      
+      // Asegurar que resultDiv esté visible
+      if (resultDiv) {
+        resultDiv.style.display = 'block';
+      }
       
       fetch('{{ url_for("registrar_asistencia") }}', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(payload)
       })
-      .then(r => r.json().then(j => ({status: r.status, body: j})))
+      .then(r => {
+        console.log('Respuesta del servidor - Status:', r.status);
+        return r.json().then(j => ({status: r.status, body: j}));
+      })
       .then(obj => {
+        console.log('Respuesta completa:', obj);
         escaneando = false;
+        
         if (obj.status === 200 && obj.body.ok) {
-          resultDiv.innerHTML = `
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-              <strong><i class="bi bi-check-circle"></i> ${obj.body.msg}</strong><br>
-              <strong>Estudiante:</strong> ${obj.body.estudiante}<br>
-              <strong>Hora:</strong> ${obj.body.hora || ''}
-              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-          `;
-          mostrarEstado('Escaneo completado. Puede escanear otro QR.', 'success');
+          console.log('Asistencia registrada exitosamente');
+          if (resultDiv) {
+            resultDiv.innerHTML = `
+              <div class="alert alert-success alert-dismissible fade show d-block" role="alert" style="font-size: 1.1em;">
+                <h5 class="alert-heading">
+                  <i class="bi bi-check-circle-fill"></i> ${obj.body.msg || 'Asistencia registrada exitosamente'}
+                </h5>
+                <hr>
+                <p class="mb-2">
+                  <strong><i class="bi bi-person"></i> Estudiante:</strong> ${obj.body.estudiante || 'N/A'}<br>
+                  <strong><i class="bi bi-clock"></i> Hora:</strong> ${obj.body.hora || ''}
+                </p>
+                <p class="mb-0"><small>Puede escanear otro código QR.</small></p>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+              </div>
+            `;
+            resultDiv.style.display = 'block';
+            resultDiv.style.visibility = 'visible';
+            resultDiv.style.opacity = '1';
+            // Scroll suave hacia el mensaje
+            setTimeout(() => {
+              resultDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+          }
+          mostrarEstado('✓ Escaneo completado. Puede escanear otro QR.', 'success');
           if (html5QrCode) {
             setTimeout(() => {
               html5QrCode.resume();
               mostrarEstado('Listo para escanear...', 'info');
-            }, 2000);
+            }, 3000);
           }
         } else if (obj.status === 409) {
-          resultDiv.innerHTML = `
-            <div class="alert alert-warning alert-dismissible fade show" role="alert">
-              <strong><i class="bi bi-exclamation-triangle"></i> ${obj.body.msg}</strong><br>
-              <strong>Estudiante:</strong> ${obj.body.estudiante || 'N/A'}
-              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-          `;
-          mostrarEstado('Ya registrado. Puede escanear otro QR.', 'warning');
+          console.log('Asistencia ya registrada (409)');
+          if (resultDiv) {
+            resultDiv.innerHTML = `
+              <div class="alert alert-warning alert-dismissible fade show d-block" role="alert" style="font-size: 1.1em;">
+                <h5 class="alert-heading">
+                  <i class="bi bi-exclamation-triangle-fill"></i> ${obj.body.msg || 'Asistencia ya registrada'}
+                </h5>
+                <hr>
+                <p class="mb-2">
+                  <strong><i class="bi bi-person"></i> Estudiante:</strong> ${obj.body.estudiante || 'N/A'}<br>
+                  ${obj.body.hora ? `<strong><i class="bi bi-clock"></i> Registrado a las:</strong> ${obj.body.hora}` : ''}
+                </p>
+                <p class="mb-0"><small>Puede escanear otro código QR.</small></p>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+              </div>
+            `;
+            resultDiv.style.display = 'block';
+            resultDiv.style.visibility = 'visible';
+            resultDiv.style.opacity = '1';
+            // Scroll suave hacia el mensaje
+            setTimeout(() => {
+              resultDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+          }
+          mostrarEstado('⚠️ Ya registrado. Puede escanear otro QR.', 'warning');
           if (html5QrCode) {
             setTimeout(() => {
               html5QrCode.resume();
               mostrarEstado('Listo para escanear...', 'info');
-            }, 2000);
+            }, 3000);
+          }
+        } else if (obj.status === 403) {
+          // Estudiante no asignado a la clase
+          console.log('Estudiante no asignado a la clase (403)');
+          if (resultDiv) {
+            resultDiv.innerHTML = `
+              <div class="alert alert-danger alert-dismissible fade show d-block" role="alert" style="font-size: 1.1em;">
+                <h5 class="alert-heading">
+                  <i class="bi bi-x-circle-fill"></i> Estudiante no asignado a esta materia
+                </h5>
+                <hr>
+                <p class="mb-2">
+                  <strong><i class="bi bi-person"></i> Estudiante:</strong> ${obj.body.estudiante || 'N/A'}<br>
+                  <strong><i class="bi bi-123"></i> Número de Control:</strong> ${obj.body.numero_control || 'N/A'}<br>
+                  <strong><i class="bi bi-book"></i> Materia:</strong> ${obj.body.clase || 'N/A'}
+                </p>
+                <p class="mb-0 text-danger">
+                  <strong>⚠️ Este estudiante no está asignado a esta materia.</strong><br>
+                  <small>Asigne el estudiante a la materia antes de registrar su asistencia.</small>
+                </p>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+              </div>
+            `;
+            resultDiv.style.display = 'block';
+            resultDiv.style.visibility = 'visible';
+            resultDiv.style.opacity = '1';
+            setTimeout(() => {
+              resultDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+          }
+          mostrarEstado('❌ Estudiante no asignado a esta materia.', 'danger');
+          if (html5QrCode) {
+            setTimeout(() => {
+              html5QrCode.resume();
+              mostrarEstado('Listo para escanear...', 'info');
+            }, 3000);
+          }
+        } else if (obj.status === 400) {
+          // Error de validación (fuera de horario, día sin clase, etc.)
+          console.log('Error de validación (400):', obj.body.msg);
+          if (resultDiv) {
+            const esHorario = obj.body.msg && obj.body.msg.includes('horario');
+            const esDia = obj.body.msg && obj.body.msg.includes('día');
+            resultDiv.innerHTML = `
+              <div class="alert alert-danger alert-dismissible fade show d-block" role="alert" style="font-size: 1.1em;">
+                <h5 class="alert-heading">
+                  <i class="bi bi-${esHorario || esDia ? 'clock' : 'x-circle'}-fill"></i> 
+                  ${esHorario ? 'Fuera del Horario Permitido' : esDia ? 'Día sin Clase Programada' : 'Error al registrar asistencia'}
+                </h5>
+                <hr>
+                <p class="mb-2">
+                  ${obj.body.estudiante ? `<strong><i class="bi bi-person"></i> Estudiante:</strong> ${obj.body.estudiante}<br>` : ''}
+                  ${obj.body.clase ? `<strong><i class="bi bi-book"></i> Materia:</strong> ${obj.body.clase}<br>` : ''}
+                  ${obj.body.horario ? `<strong><i class="bi bi-clock"></i> Horario permitido:</strong> ${obj.body.horario}<br>` : ''}
+                </p>
+                <p class="mb-0 text-danger">
+                  <strong>⚠️ ${obj.body.msg || 'No se puede registrar la asistencia en este momento.'}</strong>
+                </p>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+              </div>
+            `;
+            resultDiv.style.display = 'block';
+            resultDiv.style.visibility = 'visible';
+            resultDiv.style.opacity = '1';
+            setTimeout(() => {
+              resultDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+          }
+          mostrarEstado('❌ ' + (obj.body.msg || 'Error de validación'), 'danger');
+          if (html5QrCode) {
+            setTimeout(() => {
+              html5QrCode.resume();
+              mostrarEstado('Listo para escanear...', 'info');
+            }, 4000);
           }
         } else {
-          resultDiv.innerHTML = `
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-              <strong><i class="bi bi-x-circle"></i> ${obj.body.msg || 'Error al registrar asistencia'}</strong>
-              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-          `;
+          console.log('Error al registrar - Status:', obj.status, 'Mensaje:', obj.body.msg);
+          if (resultDiv) {
+            resultDiv.innerHTML = `
+              <div class="alert alert-danger alert-dismissible fade show d-block" role="alert" style="font-size: 1.1em;">
+                <h5 class="alert-heading">
+                  <i class="bi bi-x-circle-fill"></i> ${obj.body.msg || 'Error al registrar asistencia'}
+                </h5>
+                ${obj.body.estudiante ? `<hr><p class="mb-0"><strong>Estudiante:</strong> ${obj.body.estudiante}</p>` : ''}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+              </div>
+            `;
+            resultDiv.style.display = 'block';
+            resultDiv.style.visibility = 'visible';
+            resultDiv.style.opacity = '1';
+            setTimeout(() => {
+              resultDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+          }
           mostrarEstado('Error. Puede intentar de nuevo.', 'danger');
           if (html5QrCode) {
             setTimeout(() => {
               html5QrCode.resume();
               mostrarEstado('Listo para escanear...', 'info');
-            }, 2000);
+            }, 3000);
           }
         }
       })
       .catch(err => {
         escaneando = false;
-        console.error(err);
-        resultDiv.innerHTML = `
-          <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <strong><i class="bi bi-wifi-off"></i> Error de conexión</strong><br>
-            No se pudo conectar con el servidor. Verifique su conexión a internet.
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>
-        `;
+        console.error('Error en fetch:', err);
+        if (resultDiv) {
+          resultDiv.innerHTML = `
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+              <strong><i class="bi bi-wifi-off"></i> Error de conexión</strong><br>
+              No se pudo conectar con el servidor. Verifique su conexión a internet.
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+          `;
+          resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
         mostrarEstado('Error de conexión. Verifique su internet.', 'danger');
         if (html5QrCode) {
           setTimeout(() => {
@@ -469,20 +802,36 @@
 
           // Seleccionar cámara trasera si está disponible
           let cameraId = null;
+          console.log('Cámaras disponibles:');
+          cameras.forEach((cam, index) => {
+            console.log(`  ${index}: ${cam.label || cam.id} (ID: ${cam.id})`);
+          });
+          
+          // Buscar cámara trasera
           for (let cam of cameras) {
             const label = (cam.label || '').toLowerCase();
             if (label.includes('back') || label.includes('rear') || label.includes('environment')) {
               cameraId = cam.id;
+              console.log('Cámara trasera encontrada:', cam.label || cam.id);
               break;
             }
           }
+          
+          // Si no encuentra trasera, intentar usar la última cámara (generalmente es la trasera)
+          if (!cameraId && cameras.length > 1) {
+            cameraId = cameras[cameras.length - 1].id;
+            console.log('Usando última cámara disponible (probablemente trasera):', cameras[cameras.length - 1].label || cameraId);
+          }
+          
+          // Si aún no hay cámara, usar la primera disponible
           if (!cameraId) {
             cameraId = cameras[0].id;
+            console.log('Usando primera cámara disponible:', cameras[0].label || cameraId);
           }
 
           actualizarLoadingStatus('Iniciando cámara...');
           mostrarEstado('Iniciando cámara...', 'info');
-          console.log('Usando cámara:', cameraId);
+          console.log('Cámara seleccionada ID:', cameraId);
 
           html5QrCode.start(
             cameraId,
@@ -534,10 +883,92 @@
             mostrarEstado('Cámara activa. Apunta al código QR del estudiante.', 'success');
           }).catch(err => {
             console.error('Error al iniciar cámara:', err);
+            console.error('Cámara ID que falló:', cameraId);
+            console.error('Todas las cámaras disponibles:', cameras.map(c => ({id: c.id, label: c.label})));
             if (loadingDiv) loadingDiv.style.display = 'none';
             const errorMsg = err.message || err.toString() || 'Error desconocido';
             console.error('Detalles del error:', err);
             
+            // Si falla con la cámara trasera, intentar con la primera disponible
+            if (cameras.length > 1 && cameraId !== cameras[0].id) {
+              console.log('Intentando con la primera cámara disponible como fallback...');
+              mostrarEstado('Reintentando con otra cámara...', 'info');
+              actualizarLoadingStatus('Reintentando con otra cámara...');
+              
+              html5QrCode.start(
+                cameras[0].id,
+                qrConfig,
+                (decodedText, decodedResult) => {
+                  console.log('QR detectado:', decodedText);
+                  if (html5QrCode) {
+                    html5QrCode.pause();
+                  }
+                  mostrarEstado('QR detectado, procesando...', 'info');
+                  
+                  let payload = parsePayload(decodedText);
+                  
+                  if (payload && payload.numero_control) {
+                    payload.clase_id = claseId;
+                    registrarEnServidor(payload);
+                  } else {
+                    const numeroControl = decodedText.trim();
+                    if (numeroControl.length >= 3 && /^[a-zA-Z0-9_-]+$/.test(numeroControl)) {
+                      registrarEnServidor({
+                        numero_control: numeroControl,
+                        clase_id: claseId
+                      });
+                    } else {
+                      escaneando = false;
+                      resultDiv.innerHTML = `
+                        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                          <strong><i class="bi bi-exclamation-triangle"></i> QR no válido</strong><br>
+                          El código QR escaneado no contiene un número de control válido.
+                          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                      `;
+                      mostrarEstado('QR inválido. Intente con otro código.', 'warning');
+                      if (html5QrCode) {
+                        setTimeout(() => {
+                          html5QrCode.resume();
+                          mostrarEstado('Listo para escanear...', 'info');
+                        }, 2000);
+                      }
+                    }
+                  }
+                },
+                (errorMessage) => {
+                  // Errores de decodificación son normales, ignorar
+                }
+              ).then(() => {
+                console.log('Cámara alternativa iniciada exitosamente');
+                if (loadingDiv) loadingDiv.style.display = 'none';
+                mostrarEstado('Cámara activa. Apunta al código QR del estudiante.', 'success');
+              }).catch(err2 => {
+                console.error('Error también con cámara alternativa:', err2);
+                // Mostrar error final
+                const errorMsg2 = err2.message || err2.toString() || 'Error desconocido';
+                let mensajeError = errorMsg2;
+                if (errorMsg2.includes('Permission denied') || errorMsg2.includes('NotAllowedError')) {
+                  mensajeError = 'Permisos de cámara denegados. Por favor, permita el acceso a la cámara en la configuración del navegador.';
+                } else if (errorMsg2.includes('NotFoundError') || errorMsg2.includes('No camera')) {
+                  mensajeError = 'No se encontró ninguna cámara disponible.';
+                } else if (errorMsg2.includes('NotReadableError')) {
+                  mensajeError = 'La cámara está siendo usada por otra aplicación. Cierre otras aplicaciones que puedan estar usando la cámara.';
+                }
+                
+                resultDiv.innerHTML = `
+                  <div class="alert alert-danger">
+                    <strong><i class="bi bi-exclamation-triangle"></i> Error al iniciar cámara</strong><br>
+                    ${mensajeError}<br>
+                    <small>Error técnico: ${errorMsg2}</small>
+                  </div>
+                `;
+                mostrarEstado('Error al iniciar cámara', 'danger');
+              });
+              return; // Salir del catch para evitar ejecutar el código de error siguiente
+            }
+            
+            // Manejo de error si no hay fallback o falló el fallback
             let mensajeError = errorMsg;
             if (errorMsg.includes('Permission denied') || errorMsg.includes('NotAllowedError')) {
               mensajeError = 'Permisos de cámara denegados. Por favor, permita el acceso a la cámara en la configuración del navegador.';
