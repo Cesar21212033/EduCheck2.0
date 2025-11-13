@@ -11,6 +11,7 @@ CREATE TABLE usuarios (
   activo BOOLEAN DEFAULT TRUE,
   creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+select * from estudiantes;
 
 CREATE TABLE estudiantes (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -30,6 +31,10 @@ CREATE TABLE clases (
   FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
   UNIQUE KEY unique_codigo_usuario (codigo_clase, usuario_id)
 );
+
+
+select * from estudiantes;
+select * from usuarios;
 
 -- Tabla de asociación muchos a muchos entre Estudiante y Clase
 CREATE TABLE estudiante_clase (
@@ -54,3 +59,142 @@ CREATE TABLE asistencias (
   FOREIGN KEY (clase_id) REFERENCES clases(id) ON DELETE CASCADE,
   UNIQUE KEY unica_asistencia_por_dia (estudiante_id, clase_id, fecha)
 );
+-- ✅ Script para agregar campo de rol y usuario_id a estudiantes (compatible con MySQL)
+
+-- Agregar campo 'rol' a la tabla 'usuarios' si no existe
+-- Agregar columna 'rol' a la tabla 'usuarios' (solo ejecutar una vez)
+ALTER TABLE usuarios 
+ADD COLUMN rol VARCHAR(20) NOT NULL DEFAULT 'profesor';
+
+-- Actualizar los usuarios existentes sin rol
+SET SQL_SAFE_UPDATES = 0;
+
+UPDATE usuarios 
+SET rol = 'profesor' 
+WHERE rol IS NULL OR rol = '';
+
+SET SQL_SAFE_UPDATES = 1;
+
+
+-- Agregar columna 'usuario_id' a la tabla 'estudiantes'
+ALTER TABLE estudiantes 
+ADD COLUMN usuario_id INT NULL;
+
+-- Crear la relación foránea
+ALTER TABLE estudiantes 
+ADD CONSTRAINT fk_estudiante_usuario 
+FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE SET NULL;
+
+-- Crear índices para mejorar rendimiento
+CREATE INDEX idx_estudiantes_usuario_id ON estudiantes(usuario_id);
+CREATE INDEX idx_usuarios_rol ON usuarios(rol);
+
+
+
+-- ================================================
+-- Script para crear un usuario administrador
+-- Compatible con MySQL Workbench
+-- ================================================
+
+-- 🔹 Crear un nuevo usuario administrador
+-- ⚠️ Reemplaza el valor del hash por uno real (ver instrucciones abajo)
+INSERT INTO usuarios (username, email, password_hash, nombre_completo, rol, activo, creado_en)
+VALUES (
+    'admin',
+    'admin@tectijuana.edu.mx',
+    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyY5Y5Y5Y5Y5Y',  -- Reemplazar con hash real
+    'Administrador del Sistema',
+    'admin',
+    1,
+    NOW()
+);
+
+-- ================================================
+-- Si deseas convertir un usuario existente en admin:
+-- Reemplaza 'nombre_usuario' con el nombre de usuario correcto
+-- ================================================
+-- UPDATE usuarios SET rol = 'admin' WHERE username = 'nombre_usuario';
+
+
+-- Script para corregir usuarios con password_hash inválido o vacío
+-- Ejecutar este script si tienes usuarios con problemas de autenticación
+
+-- Verificar usuarios con password_hash vacío o NULL
+SELECT id, username, email, password_hash, rol 
+FROM usuarios 
+WHERE password_hash IS NULL OR password_hash = '' OR password_hash NOT LIKE 'pbkdf2:%';
+
+-- Opción 1: Actualizar un usuario específico con un hash válido
+-- Reemplaza 'nombre_usuario' con el username y 'nueva_contraseña' con la contraseña deseada
+-- Primero genera el hash en Python:
+-- python -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('nueva_contraseña'))"
+-- Luego ejecuta:
+-- UPDATE usuarios SET password_hash = 'hash_generado' WHERE username = 'nombre_usuario';
+
+-- Opción 2: Resetear contraseña del admin a 'admin123'
+-- Hash para 'admin123': pbkdf2:sha256:600000$4VfADb7eOdJ5gQ2W$58bf51cb43f4979f06d8d1f873c2197bc394c037b4ce851bd370c1d3fd5e79f7
+UPDATE usuarios 
+SET password_hash = 'pbkdf2:sha256:600000$4VfADb7eOdJ5gQ2W$58bf51cb43f4979f06d8d1f873c2197bc394c037b4ce851bd370c1d3fd5e79f7',
+    rol = 'admin'
+WHERE username = 'admin';
+
+select * from usuarios;
+
+SET SQL_SAFE_UPDATES = 0;
+
+UPDATE usuarios
+SET rol = 'admin'
+WHERE username = 'Cesar05';
+
+SET SQL_SAFE_UPDATES = 1;
+
+
+
+-- 🔹 1. Verificar y agregar la columna 'password_changed' solo si no existe
+SET @columna_existe := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_NAME = 'usuarios'
+    AND COLUMN_NAME = 'password_changed'
+    AND TABLE_SCHEMA = DATABASE()
+);
+
+SET @sql := IF(
+  @columna_existe = 0,
+  'ALTER TABLE usuarios ADD COLUMN password_changed BOOLEAN DEFAULT FALSE;',
+  'SELECT "La columna password_changed ya existe" AS mensaje;'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+
+-- 🔹 2. Actualizar todos los usuarios existentes (excepto alumnos nuevos)
+SET SQL_SAFE_UPDATES = 0;
+
+UPDATE usuarios
+SET password_changed = TRUE
+WHERE password_changed IS NULL OR password_changed = FALSE;
+
+SET SQL_SAFE_UPDATES = 1;
+
+
+-- 🔹 3. Crear el índice solo si no existe
+SET @index_existe := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'usuarios'
+    AND INDEX_NAME = 'idx_usuarios_password_changed'
+);
+
+SET @sql_index := IF(
+  @index_existe = 0,
+  'CREATE INDEX idx_usuarios_password_changed ON usuarios(password_changed);',
+  'SELECT "El índice idx_usuarios_password_changed ya existe" AS mensaje;'
+);
+PREPARE stmt_index FROM @sql_index;
+EXECUTE stmt_index;
+DEALLOCATE PREPARE stmt_index;
+
+
