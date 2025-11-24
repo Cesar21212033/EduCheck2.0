@@ -35,44 +35,8 @@ else:
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "dev-secret")
-
-# Configuración de base de datos - Compatible con Railway y desarrollo local
-def get_database_url():
-    """Obtiene la URL de la base de datos desde variables de entorno"""
-    # Intentar diferentes variables de entorno comunes en Railway
-    database_url = (
-        os.getenv("DATABASE_URL") or 
-        os.getenv("MYSQL_URL") or 
-        os.getenv("MYSQLDATABASE_URL") or
-        os.getenv("JAWSDB_URL") or
-        os.getenv("CLEARDB_DATABASE_URL")
-    )
-    
-    # Si hay una URL completa, verificar y ajustar el formato si es necesario
-    if database_url:
-        # Si la URL no tiene el prefijo mysql+pymysql, agregarlo
-        if database_url.startswith("mysql://"):
-            database_url = database_url.replace("mysql://", "mysql+pymysql://", 1)
-        elif not database_url.startswith("mysql+pymysql://"):
-            # Si no tiene prefijo, asumir que es MySQL y agregar el prefijo correcto
-            if "@" in database_url and "://" not in database_url:
-                database_url = "mysql+pymysql://" + database_url
-        return database_url
-    
-    # Si no hay URL completa, intentar construir desde variables separadas (Railway MySQL)
-    mysql_host = os.getenv("MYSQL_HOST") or os.getenv("MYSQLHOST")
-    mysql_user = os.getenv("MYSQL_USER") or os.getenv("MYSQLUSER")
-    mysql_password = os.getenv("MYSQL_PASSWORD") or os.getenv("MYSQLPASSWORD")
-    mysql_database = os.getenv("MYSQL_DATABASE") or os.getenv("MYSQLDATABASE") or "asistencia_db"
-    mysql_port = os.getenv("MYSQL_PORT") or os.getenv("MYSQLPORT") or "3306"
-    
-    if mysql_host and mysql_user and mysql_password:
-        return f"mysql+pymysql://{mysql_user}:{mysql_password}@{mysql_host}:{mysql_port}/{mysql_database}"
-    
-    # Fallback para desarrollo local
-    return "mysql+pymysql://root:Baby20150531@localhost/asistencia_db"
-
-app.config['SQLALCHEMY_DATABASE_URI'] = get_database_url()
+# Example: mysql+pymysql://user:password@localhost/asistencia_db
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "mysql+pymysql://root:Baby20150531@localhost/asistencia_db")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Configuración de correo
