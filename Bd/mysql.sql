@@ -62,8 +62,22 @@ CREATE TABLE asistencias (
 
 -- Agregar campo 'rol' a la tabla 'usuarios' si no existe
 -- Agregar columna 'rol' a la tabla 'usuarios' (solo ejecutar una vez)
-ALTER TABLE usuarios 
-ADD COLUMN rol VARCHAR(20) NOT NULL DEFAULT 'profesor';
+SET @columna_rol_existe := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_NAME = 'usuarios'
+    AND COLUMN_NAME = 'rol'
+    AND TABLE_SCHEMA = DATABASE()
+);
+
+SET @sql_rol := IF(
+  @columna_rol_existe = 0,
+  'ALTER TABLE usuarios ADD COLUMN rol VARCHAR(20) NOT NULL DEFAULT ''profesor'';',
+  'SELECT "La columna rol ya existe" AS mensaje;'
+);
+PREPARE stmt_rol FROM @sql_rol;
+EXECUTE stmt_rol;
+DEALLOCATE PREPARE stmt_rol;
 
 -- Actualizar los usuarios existentes sin rol
 SET SQL_SAFE_UPDATES = 0;
@@ -75,18 +89,76 @@ WHERE rol IS NULL OR rol = '';
 SET SQL_SAFE_UPDATES = 1;
 
 
--- Agregar columna 'usuario_id' a la tabla 'estudiantes'
-ALTER TABLE estudiantes 
-ADD COLUMN usuario_id INT NULL;
+-- Agregar columna 'usuario_id' a la tabla 'estudiantes' si no existe
+SET @columna_usuario_id_existe := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_NAME = 'estudiantes'
+    AND COLUMN_NAME = 'usuario_id'
+    AND TABLE_SCHEMA = DATABASE()
+);
 
--- Crear la relación foránea
-ALTER TABLE estudiantes 
-ADD CONSTRAINT fk_estudiante_usuario 
-FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE SET NULL;
+SET @sql_usuario_id := IF(
+  @columna_usuario_id_existe = 0,
+  'ALTER TABLE estudiantes ADD COLUMN usuario_id INT NULL;',
+  'SELECT "La columna usuario_id ya existe" AS mensaje;'
+);
+PREPARE stmt_usuario_id FROM @sql_usuario_id;
+EXECUTE stmt_usuario_id;
+DEALLOCATE PREPARE stmt_usuario_id;
 
--- Crear índices para mejorar rendimiento
-CREATE INDEX idx_estudiantes_usuario_id ON estudiantes(usuario_id);
-CREATE INDEX idx_usuarios_rol ON usuarios(rol);
+-- Crear la relación foránea si no existe
+SET @fk_existe := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'estudiantes'
+    AND CONSTRAINT_NAME = 'fk_estudiante_usuario'
+);
+
+SET @sql_fk := IF(
+  @fk_existe = 0,
+  'ALTER TABLE estudiantes ADD CONSTRAINT fk_estudiante_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE SET NULL;',
+  'SELECT "La foreign key fk_estudiante_usuario ya existe" AS mensaje;'
+);
+PREPARE stmt_fk FROM @sql_fk;
+EXECUTE stmt_fk;
+DEALLOCATE PREPARE stmt_fk;
+
+-- Crear índices para mejorar rendimiento (solo si no existen)
+SET @idx_estudiantes_usuario_id_existe := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'estudiantes'
+    AND INDEX_NAME = 'idx_estudiantes_usuario_id'
+);
+
+SET @sql_idx_estudiantes := IF(
+  @idx_estudiantes_usuario_id_existe = 0,
+  'CREATE INDEX idx_estudiantes_usuario_id ON estudiantes(usuario_id);',
+  'SELECT "El índice idx_estudiantes_usuario_id ya existe" AS mensaje;'
+);
+PREPARE stmt_idx_estudiantes FROM @sql_idx_estudiantes;
+EXECUTE stmt_idx_estudiantes;
+DEALLOCATE PREPARE stmt_idx_estudiantes;
+
+SET @idx_usuarios_rol_existe := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'usuarios'
+    AND INDEX_NAME = 'idx_usuarios_rol'
+);
+
+SET @sql_idx_usuarios_rol := IF(
+  @idx_usuarios_rol_existe = 0,
+  'CREATE INDEX idx_usuarios_rol ON usuarios(rol);',
+  'SELECT "El índice idx_usuarios_rol ya existe" AS mensaje;'
+);
+PREPARE stmt_idx_usuarios_rol FROM @sql_idx_usuarios_rol;
+EXECUTE stmt_idx_usuarios_rol;
+DEALLOCATE PREPARE stmt_idx_usuarios_rol;
 
 
 
@@ -94,8 +166,9 @@ CREATE INDEX idx_usuarios_rol ON usuarios(rol);
 -- Script para crear un usuario administrador
 -- ================================================
 
+-- Insertar usuario administrador solo si no existe
 INSERT INTO usuarios (username, email, password_hash, nombre_completo, rol, activo, creado_en)
-VALUES (
+SELECT 
     'admin',
     'admin@tectijuana.edu.mx',
     '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyY5Y5Y5Y5Y5Y',  -- Reemplazar con hash real
@@ -103,6 +176,8 @@ VALUES (
     'admin',
     1,
     NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM usuarios WHERE username = 'admin'
 );
 
 
@@ -135,6 +210,7 @@ select * from usuarios;
 
 SET SQL_SAFE_UPDATES = 0;
 
+-- Actualizar rol del usuario (si no existe, simplemente no se actualizará nada)
 UPDATE usuarios
 SET rol = 'admin'
 WHERE username = 'Cesar05';
