@@ -36,7 +36,7 @@ else:
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "dev-secret")
 # Example: mysql+pymysql://user:password@localhost/asistencia_db
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "mysql+pymysql://root:Baby20150531@localhost/asistencia_db")
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "mysql+pymysql://root:Mando321@localhost/asistencia_db")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Configuración de correo
